@@ -1,0 +1,2265 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+
+<!-- ربط ملف المانيفست -->
+<link rel="manifest" href="./manifest.json">
+
+<!-- تفعيل السيرفر ووركر -->
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js')
+        .then(reg => console.log('تم تسجيل Service Worker بنجاح!', reg))
+        .catch(err => console.error('فشل تسجيل Service Worker', err));
+    });
+  }
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>🎮 منصة الألعاب</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; user-select:none; }
+  html,body { width:100%; height:100%; overflow:hidden; font-family:'Tahoma','Arial',sans-serif; }
+  body { background:#0f172a; color:#fff; touch-action:none; }
+
+  /* ---------- MENU ---------- */
+  #menuScreen {
+    width:100%; height:100%;
+    overflow-y:auto;
+    background: radial-gradient(circle at 50% 0%, #1e293b, #0f172a 60%);
+    padding: 22px 16px 40px;
+  }
+  #menuScreen h1 {
+    text-align:center;
+    font-size: clamp(22px,6vw,34px);
+    margin-bottom:6px;
+    background: linear-gradient(90deg,#ffd93b,#ff6b6b,#4ecdc4);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  #menuScreen p.sub {
+    text-align:center; color:#94a3b8; font-size: clamp(12px,3vw,15px); margin-bottom:20px;
+  }
+  .grid {
+    display:grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px,1fr));
+    gap: 14px;
+    max-width: 900px;
+    margin: 0 auto;
+  }
+  .card {
+    border-radius:18px;
+    padding: 18px 12px;
+    text-align:center;
+    cursor:pointer;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.35);
+    transition: transform .12s ease;
+    border: 2px solid rgba(255,255,255,0.08);
+  }
+  .card:active { transform: scale(0.95); }
+  .card .icon { font-size: 34px; display:block; margin-bottom:8px; }
+  .card .title { font-weight:bold; font-size: clamp(13px,3.4vw,16px); }
+  .card .tag { font-size: 11px; opacity:0.85; margin-top:4px; display:block; }
+
+  /* ---------- GAME SCREEN ---------- */
+  #gameScreen {
+    display:none;
+    width:100%; height:100%;
+    position:relative;
+    flex-direction:column;
+  }
+  #gameScreen.active { display:flex; }
+  #gameHeader {
+    display:flex; align-items:center; justify-content:space-between;
+    padding: 10px 14px;
+    z-index:20;
+  }
+  #backBtn {
+    background:rgba(255,255,255,0.15);
+    color:#fff; border:none; border-radius:12px;
+    padding:8px 16px; font-size:15px; font-weight:bold; cursor:pointer;
+  }
+  .soundBtn {
+    background:rgba(255,255,255,0.15);
+    color:inherit; border:none; border-radius:12px;
+    padding:8px 12px; font-size:16px; cursor:pointer;
+  }
+  #soundToggleMenu {
+    position:fixed; top:14px; left:14px; z-index:60; color:#fff;
+  }
+  #headerLeftGroup { display:flex; gap:8px; align-items:center; }
+  #gameTitleBar { font-weight:bold; font-size: clamp(14px,4vw,18px); }
+  #gameStats { font-size: clamp(12px,3.4vw,15px); font-weight:bold; }
+  #gameContainer {
+    flex:1;
+    position:relative;
+    overflow:hidden;
+  }
+  .themeSky { background: linear-gradient(180deg,#87CEEB 0%, #cdeedb 100%); color:#111; }
+  .themeNeon { background: radial-gradient(circle at 50% 20%, #1a1a2e, #0a0a12); color:#fff; }
+  .themeSpace { background: radial-gradient(circle at 50% 10%, #241b4e, #0b0620); color:#fff; }
+  .themeMath { background: linear-gradient(180deg,#0f2027,#203a43,#2c5364); color:#fff; }
+  .themeCarnival { background: linear-gradient(180deg,#ff9a9e,#fecfef); color:#3b0764; }
+  .themeWood { background: linear-gradient(180deg,#8d6e63,#5d4037); color:#fff; }
+  .themeMystery { background: radial-gradient(circle at 50% 20%, #232526, #000000); color:#fff; }
+  .themeOrchard { background: linear-gradient(180deg,#a8e063,#56ab2f); color:#0b2e00; }
+  .themeRace { background: linear-gradient(180deg,#232526,#414345); color:#fff; }
+  .themeXO { background: linear-gradient(180deg,#0f0c29,#302b63,#24243e); color:#fff; }
+
+  canvas { display:block; width:100%; height:100%; }
+
+  /* Overlays for round end */
+  .roundOverlay {
+    position:absolute; inset:0;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    background:rgba(0,0,0,0.72);
+    text-align:center; padding:20px; z-index:30;
+  }
+  .roundOverlay h2 { font-size: clamp(22px,6vw,32px); margin-bottom:10px; color:#ffd93b; }
+  .roundOverlay p { font-size: clamp(14px,4vw,18px); margin-bottom:18px; opacity:.9; }
+  .actionBtn {
+    background: linear-gradient(180deg,#ffd93b,#ffb100);
+    color:#2b2b2b; border:none; padding:14px 38px;
+    font-size: clamp(16px,4.5vw,20px); font-weight:900; border-radius:50px;
+    cursor:pointer; box-shadow: 0 5px 0 #b57a00;
+    margin: 6px;
+  }
+  .actionBtn.secondary {
+    background: linear-gradient(180deg,#4ecdc4,#2b9d94);
+    box-shadow: 0 5px 0 #1c6b64;
+  }
+  .hint { position:absolute; bottom:10px; left:0; right:0; text-align:center; font-size:12px; opacity:.75; z-index:5; pointer-events:none;}
+
+  /* Generic DOM game styling */
+  .domGame { width:100%; height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:16px; gap:16px; }
+  .problemBox {
+    font-size: clamp(28px,8vw,44px); font-weight:900; background:rgba(255,255,255,0.12);
+    padding: 16px 30px; border-radius:20px; text-align:center;
+  }
+  .optionsGrid { display:grid; grid-template-columns:1fr 1fr; gap:14px; width:100%; max-width:420px; }
+  .optBtn {
+    background:rgba(255,255,255,0.15); border:2px solid rgba(255,255,255,0.25);
+    color:inherit; font-size: clamp(18px,5vw,26px); font-weight:bold;
+    padding: 18px 10px; border-radius:16px; cursor:pointer;
+  }
+  .optBtn:active { transform:scale(0.95); }
+  .optBtn.correct { background:#22c55e !important; border-color:#16a34a; }
+  .optBtn.wrong { background:#ef4444 !important; border-color:#b91c1c; }
+  .timerBarWrap { width:100%; max-width:420px; height:12px; background:rgba(255,255,255,0.2); border-radius:8px; overflow:hidden; }
+  .timerBar { height:100%; background:linear-gradient(90deg,#22c55e,#eab308,#ef4444); width:100%; transition:width .1s linear; }
+
+  .kidLevelGrid { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; width:100%; max-width:380px; margin-top:10px; }
+  .kidLevelBtn {
+    background: rgba(255,255,255,0.14); border:3px solid rgba(255,255,255,0.25);
+    color:inherit; border-radius:20px; padding:18px 6px; cursor:pointer;
+    display:flex; flex-direction:column; align-items:center; gap:6px;
+  }
+  .kidLevelBtn:active { transform:scale(0.94); }
+  .kidLevelBtn .num { font-size:34px; font-weight:900; }
+  .kidLevelBtn .lbl { font-size:11px; opacity:.85; }
+  .kidVisual { font-size: clamp(30px,8vw,44px); line-height:1.3; letter-spacing:4px; text-align:center; }
+  .kidOptGrid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; width:100%; max-width:420px; }
+  .kidOptBtn {
+    background:rgba(255,255,255,0.15); border:3px solid rgba(255,255,255,0.25);
+    color:inherit; font-size: clamp(24px,7vw,34px); font-weight:900;
+    padding: 16px 6px; border-radius:18px; cursor:pointer;
+  }
+  .kidOptBtn:active { transform:scale(0.94); }
+  .kidOptBtn.correct { background:#22c55e !important; border-color:#16a34a; }
+  .kidOptBtn.wrong { background:#ef4444 !important; border-color:#b91c1c; }
+  .cardsGrid { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; width:100%; max-width:420px; }
+  .memCard {
+    aspect-ratio:1/1; border-radius:12px; background:rgba(255,255,255,0.15);
+    display:flex; align-items:center; justify-content:center; font-size: clamp(22px,7vw,32px);
+    cursor:pointer; transition: transform .3s;
+  }
+  .memCard.flipped, .memCard.matched { background:rgba(255,255,255,0.35); }
+
+  .ticGrid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; width: min(340px,80vw); aspect-ratio:1/1; }
+  .ticCell {
+    background:rgba(255,255,255,0.1); border-radius:12px; display:flex; align-items:center; justify-content:center;
+    font-size: clamp(30px,10vw,50px); font-weight:900; cursor:pointer; transition: opacity .2s;
+  }
+  .ticCell.fading { opacity:0.35; }
+  .ticCell.selected { box-shadow: inset 0 0 0 3px #ffd93b; }
+  .ticCell.validMove { background:rgba(255,255,255,0.28); }
+
+  .slideGrid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; width:min(300px,75vw); aspect-ratio:1/1; }
+  .slideTile {
+    background: linear-gradient(180deg,#ffd93b,#ffb100); color:#2b2b2b;
+    display:flex; align-items:center; justify-content:center;
+    font-size: clamp(24px,7vw,34px); font-weight:900; border-radius:10px; cursor:pointer;
+  }
+  .slideTile.empty { background:transparent; box-shadow:none; cursor:default; }
+
+  .guessRow { display:flex; align-items:center; gap:10px; }
+  .guessRow input {
+    width:110px; font-size:24px; text-align:center; padding:10px; border-radius:12px; border:none;
+  }
+  .stepBtn {
+    background:rgba(255,255,255,0.2); border:none; color:inherit; font-size:22px; font-weight:bold;
+    width:44px; height:44px; border-radius:50%; cursor:pointer;
+  }
+  .feedbackText { font-size: clamp(16px,5vw,22px); font-weight:bold; min-height:28px; }
+
+  .numKeypad { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; width:100%; max-width:280px; }
+  .numKey {
+    background:rgba(255,255,255,0.15); border:2px solid rgba(255,255,255,0.2); color:inherit;
+    font-size:22px; font-weight:bold; padding:16px 0; border-radius:14px; cursor:pointer;
+  }
+  .numKey:active { transform:scale(0.94); background:rgba(255,255,255,0.3); }
+  .numKey.wide { grid-column:span 1; }
+  .numKey.confirm { background:#22c55e; border-color:#16a34a; }
+  .numKey.del { background:#ef4444; border-color:#b91c1c; }
+  .secretDisplay {
+    font-size: clamp(28px,9vw,42px); font-weight:900; letter-spacing:8px;
+    background:rgba(255,255,255,0.12); padding:14px 30px; border-radius:20px; text-align:center;
+    min-width:160px;
+  }
+
+  /* ---------- PENALTY SHOOTOUT ---------- */
+  .pkWrap { width:100%; height:100%; display:flex; flex-direction:column; }
+  .pkMenu { width:100%; height:100%; overflow-y:auto; padding:18px 14px 30px; display:flex; flex-direction:column; align-items:center; gap:14px; }
+  .pkMenu h2 { font-size: clamp(18px,5vw,26px); color:#ffd93b; text-align:center; }
+  .pkMenu p.pkSub { font-size: clamp(12px,3.4vw,15px); opacity:.85; text-align:center; max-width:520px; }
+  .pkModeBtn {
+    width:100%; max-width:420px; text-align:right; background:rgba(255,255,255,0.1);
+    border:2px solid rgba(255,255,255,0.18); color:#fff; border-radius:16px;
+    padding:16px 18px; font-size: clamp(14px,3.8vw,17px); font-weight:bold; cursor:pointer;
+    display:flex; align-items:center; gap:12px;
+  }
+  .pkModeBtn span.pkModeIcon { font-size:26px; }
+  .pkModeBtn small { display:block; font-weight:normal; opacity:.75; font-size:12px; margin-top:3px; }
+  .teamGrid {
+    display:grid; grid-template-columns: repeat(auto-fill, minmax(130px,1fr));
+    gap:12px; width:100%; max-width:640px;
+  }
+  .teamCard {
+    border-radius:16px; padding:12px 8px; text-align:center; cursor:pointer;
+    border:2px solid rgba(255,255,255,0.15); background:rgba(255,255,255,0.08);
+    transition: transform .1s ease;
+  }
+  .teamCard:active { transform:scale(0.94); }
+  .teamCard .tFlag { font-size:30px; display:block; margin-bottom:4px; }
+  .teamCard .tName { font-weight:bold; font-size:13px; }
+  .teamCard .tStar { font-size:11px; opacity:.8; margin-top:3px; }
+  .roomCodeBox {
+    font-size:clamp(26px,8vw,38px); font-weight:900; letter-spacing:6px;
+    background:rgba(255,255,255,0.12); padding:12px 26px; border-radius:16px;
+    text-align:center; min-width:160px; color:#4ecdc4;
+  }
+  .roomInput {
+    font-size:20px; font-weight:900; letter-spacing:4px; text-align:center;
+    padding:12px 18px; border-radius:14px; border:2px solid rgba(255,255,255,0.3);
+    background:rgba(255,255,255,0.1); color:#fff; width:180px; max-width:80vw;
+  }
+  .pkStage { position:relative; flex:1; overflow:hidden; }
+  .pkHud {
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:8px 14px; font-size:12px; z-index:15; position:relative;
+  }
+  .pkHudSide { display:flex; flex-direction:column; align-items:center; gap:4px; }
+  .pkHudSide .pkTeamLbl { font-weight:bold; font-size:12px; max-width:110px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .pkDots { display:flex; gap:3px; }
+  .pkDot { width:12px; height:12px; border-radius:50%; background:rgba(255,255,255,0.25); border:1px solid rgba(255,255,255,0.4); }
+  .pkDot.goal { background:#4ade80; border-color:#22c55e; }
+  .pkDot.miss { background:#ef4444; border-color:#b91c1c; }
+  .pkVs { font-size:22px; font-weight:900; opacity:.7; }
+  .pkField { position:absolute; inset:0; background: linear-gradient(180deg,#0e2f0e 0%, #1c5c1c 45%, #2c7a2c 100%); }
+  .pkGoal {
+    position:absolute; top:8%; left:50%; transform:translateX(-50%);
+    width:min(78%,420px); height:34%;
+    border:6px solid #fff; border-bottom:none; border-radius:4px 4px 0 0;
+    background:
+      repeating-linear-gradient(90deg, rgba(255,255,255,0.15) 0 2px, transparent 2px 18px),
+      repeating-linear-gradient(0deg, rgba(255,255,255,0.15) 0 2px, transparent 2px 18px);
+    box-shadow: inset 0 -30px 40px -10px rgba(0,0,0,0.35);
+  }
+  .pkKeeper {
+    position:absolute; bottom:-6px; left:50%; font-size:38px;
+    transform: translate(-50%,0); transition: transform .38s cubic-bezier(.2,.8,.3,1.2), left .38s ease;
+    filter: drop-shadow(0 4px 4px rgba(0,0,0,0.4)); z-index:6;
+  }
+  .pkBall {
+    position:absolute; font-size:30px; left:50%; bottom:14%;
+    transform:translate(-50%,0); transition: left .55s ease, bottom .55s ease, transform .55s ease;
+    filter: drop-shadow(0 4px 4px rgba(0,0,0,0.4)); z-index:7;
+  }
+  .pkSpotHint { position:absolute; bottom:12%; left:50%; transform:translate(-50%,0); width:60px; height:60px; border:2px dashed rgba(255,255,255,0.5); border-radius:50%; z-index:2; }
+  .pkTouchPad { position:absolute; inset:0; z-index:8; touch-action:none; }
+  .pkBanner {
+    position:absolute; left:0; right:0; top:44%; text-align:center; z-index:20;
+    font-size:clamp(15px,4.4vw,20px); font-weight:900; padding:10px 16px; pointer-events:none;
+    text-shadow: 0 2px 6px rgba(0,0,0,0.6);
+  }
+  .pkDiveRow { position:absolute; bottom:6%; left:0; right:0; display:flex; justify-content:center; gap:14px; z-index:20; }
+  .pkDiveBtn {
+    background:rgba(255,255,255,0.15); border:2px solid rgba(255,255,255,0.4); color:#fff;
+    border-radius:16px; padding:14px 18px; font-size:26px; cursor:pointer; min-width:70px;
+  }
+  .pkDiveBtn:active { transform:scale(0.92); }
+  .pkTimerWrap { position:absolute; top:2px; left:10%; right:10%; height:6px; background:rgba(255,255,255,0.2); border-radius:4px; z-index:20; overflow:hidden; }
+  .pkTimerBar { height:100%; background:#ffd93b; width:100%; }
+  .pkCtrlRow { position:absolute; bottom:5%; left:0; right:0; display:flex; flex-direction:column; align-items:center; gap:8px; z-index:20; }
+  .pkSwitchBtn { background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.3); color:#fff; border-radius:20px; padding:6px 14px; font-size:12px; cursor:pointer; }
+  .pkDial { position:relative; width:150px; height:110px; z-index:20; }
+  .pkDialCell {
+    position:absolute; width:46px; height:46px; border-radius:12px; background:rgba(255,255,255,0.14);
+    border:2px solid rgba(255,255,255,0.35); font-size:20px; display:flex; align-items:center; justify-content:center; cursor:pointer;
+  }
+  .pkDialCell.picked { background:#ffd93b; color:#2b2b2b; border-color:#ffb100; }
+  .pkShootBtn {
+    background: linear-gradient(180deg,#ff6b6b,#c0392b); color:#fff; border:none; border-radius:50px;
+    padding:14px 34px; font-size:16px; font-weight:900; box-shadow:0 5px 0 #7a1f14; cursor:pointer; z-index:20;
+  }
+  .pkChipToggle { background:rgba(255,255,255,0.14); border:2px solid rgba(255,255,255,0.35); color:#fff; border-radius:20px; padding:6px 14px; font-size:12px; cursor:pointer; }
+  .pkChipToggle.on { background:#4ecdc4; color:#0b3b38; border-color:#2b9d94; }
+</style>
+</head>
+<body>
+
+<!-- MENU -->
+<div id="menuScreen">
+  <button id="soundToggleMenu" class="soundBtn">🔊</button>
+  <h1>🎮 منصة الألعاب</h1>
+  <p class="sub">اختر لعبة وابدأ التحدي — 11 لعبة متنوعة!</p>
+  <div class="grid" id="menuGrid"></div>
+</div>
+
+<!-- GAME SCREEN -->
+<div id="gameScreen">
+  <div id="gameHeader">
+    <div id="headerLeftGroup">
+      <button id="backBtn">⬅ رجوع</button>
+      <button id="soundToggleGame" class="soundBtn">🔊</button>
+    </div>
+    <div id="gameTitleBar"></div>
+    <div id="gameStats"></div>
+  </div>
+  <div id="gameContainer"></div>
+</div>
+
+<script>
+(function(){
+  const menuScreen = document.getElementById('menuScreen');
+  const gameScreen = document.getElementById('gameScreen');
+  const gameContainer = document.getElementById('gameContainer');
+  const gameTitleBar = document.getElementById('gameTitleBar');
+  const gameStats = document.getElementById('gameStats');
+  const backBtn = document.getElementById('backBtn');
+  const menuGrid = document.getElementById('menuGrid');
+
+  let cleanupFn = null;
+  let currentGame = null;
+  let dualMode = false;
+  let dualStage = 0; // 0=off, 1=player1 turn, 2=player2 turn
+  let dualScores = [null,null];
+  const DUAL_UNSUPPORTED = ['tictactoe','memory','guess','penalty','kidsmath']; // ألعاب عندها نظام لاعبين خاص فيها أصلاً (تدار داخل اللعبة نفسها)
+  const bestScores = {}; // session-only best scores per game
+
+  /* ---------- SOUND ENGINE (generated tones, no audio files needed) ---------- */
+  let audioCtx = null;
+  let soundOn = true;
+  const soundBtns = ['soundToggleMenu','soundToggleGame'];
+  function getCtx(){
+    if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if(audioCtx.state === 'suspended') audioCtx.resume();
+    return audioCtx;
+  }
+  function beep(freq, dur, type, vol, delay, slideTo){
+    if(!soundOn) return;
+    try{
+      const ctx = getCtx();
+      const t0 = ctx.currentTime + (delay||0);
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = type || 'sine';
+      osc.frequency.setValueAtTime(freq, t0);
+      if(slideTo) osc.frequency.linearRampToValueAtTime(slideTo, t0+dur);
+      gain.gain.setValueAtTime(0, t0);
+      gain.gain.linearRampToValueAtTime(vol||0.2, t0+0.012);
+      gain.gain.exponentialRampToValueAtTime(0.001, t0+dur);
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(t0); osc.stop(t0+dur+0.03);
+    }catch(e){}
+  }
+  function sfx(name){
+    switch(name){
+      case 'jump': beep(300,0.12,'square',0.15,0,620); break;
+      case 'coin': beep(880,0.07,'triangle',0.2,0); beep(1320,0.1,'triangle',0.18,0.07); break;
+      case 'hit': beep(180,0.2,'sawtooth',0.2,0,80); break;
+      case 'gameover': beep(420,0.15,'sine',0.18,0,220); beep(300,0.15,'sine',0.16,0.15,150); beep(200,0.28,'sine',0.16,0.3,100); break;
+      case 'click': beep(500,0.05,'square',0.1,0); break;
+      case 'move': beep(420,0.045,'square',0.09,0); break;
+      case 'flip': beep(700,0.05,'sine',0.12,0); break;
+      case 'match': beep(660,0.08,'triangle',0.2,0); beep(880,0.12,'triangle',0.2,0.09); break;
+      case 'correct': beep(523,0.09,'sine',0.18,0); beep(659,0.09,'sine',0.18,0.09); beep(784,0.14,'sine',0.2,0.18); break;
+      case 'wrong': beep(160,0.18,'sawtooth',0.18,0,110); break;
+      case 'win': beep(523,0.1,'sine',0.2,0); beep(659,0.1,'sine',0.2,0.1); beep(784,0.1,'sine',0.2,0.2); beep(1046,0.22,'sine',0.22,0.3); break;
+      case 'pop': beep(650+Math.random()*350,0.08,'square',0.18,0,150); break;
+      case 'tickHigh': beep(920,0.06,'sine',0.12,0); break;
+      case 'tickLow': beep(340,0.06,'sine',0.12,0); break;
+    }
+  }
+  function updateSoundIcons(){
+    soundBtns.forEach(id=>{ const b=document.getElementById(id); if(b) b.textContent = soundOn ? '🔊' : '🔇'; });
+  }
+  function toggleSound(){ soundOn = !soundOn; updateSoundIcons(); if(soundOn) beep(600,0.05,'sine',0.15); }
+
+  const GAMES = [
+    { id:'runner', icon:'⚽', title:'ركض الكابتن', tag:'أركيد', color:'linear-gradient(160deg,#1e63d6,#123a8a)', theme:'themeSky', init: initRunner },
+    { id:'snake', icon:'🐍', title:'الثعبان النيون', tag:'أركيد', color:'linear-gradient(160deg,#0f2027,#2c5364)', theme:'themeNeon', init: initSnake },
+    { id:'memory', icon:'🧠', title:'لعبة الذاكرة الفضائية', tag:'ذكاء', color:'linear-gradient(160deg,#3b0764,#241b4e)', theme:'themeSpace', init: initMemory },
+    { id:'mathquiz', icon:'➕', title:'تحدي الرياضيات', tag:'تعليمية', color:'linear-gradient(160deg,#134e5e,#71b280)', theme:'themeMath', init: initMathQuiz },
+    { id:'kidsmath', icon:'🧮', title:'رياضيات الصغار', tag:'٥ سنوات وأقل', color:'linear-gradient(160deg,#f6a821,#f76b1c)', theme:'themeMath', init: initKidsMath },
+    { id:'catch', icon:'🍎', title:'اصطد الجواب الصح', tag:'تعليمية', color:'linear-gradient(160deg,#56ab2f,#a8e063)', theme:'themeOrchard', init: initCatch },
+    { id:'tictactoe', icon:'❌', title:'اكس أو', tag:'ذكاء', color:'linear-gradient(160deg,#302b63,#0f0c29)', theme:'themeXO', init: initTicTacToe },
+    { id:'balloons', icon:'🎈', title:'فرقعة البالونات', tag:'ردة فعل', color:'linear-gradient(160deg,#ff758c,#ff7eb3)', theme:'themeCarnival', init: initBalloons },
+    { id:'slide', icon:'🧩', title:'الأحجية المنزلقة', tag:'ذكاء', color:'linear-gradient(160deg,#8d6e63,#5d4037)', theme:'themeWood', init: initSlidePuzzle },
+    { id:'multirace', icon:'🔢', title:'سباق الضرب', tag:'تعليمية', color:'linear-gradient(160deg,#232526,#414345)', theme:'themeRace', init: initMultiRace },
+    { id:'guess', icon:'🕵️', title:'خمن الرقم', tag:'ذكاء', color:'linear-gradient(160deg,#232526,#000000)', theme:'themeMystery', init: initGuess },
+    { id:'penalty', icon:'🥅', title:'ركلات الترجيح', tag:'رياضة • أونلاين', color:'linear-gradient(160deg,#0b3d0b,#1c5c1c)', theme:'themeOrchard', init: initPenalty },
+  ];
+
+  function renderMenu(){
+    menuGrid.innerHTML = '';
+    GAMES.forEach(g=>{
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.style.background = g.color;
+      card.innerHTML = `<span class="icon">${g.icon}</span><span class="title">${g.title}</span><span class="tag">${g.tag}</span>`;
+      card.addEventListener('click', ()=> { sfx('click'); startGame(g); });
+      menuGrid.appendChild(card);
+    });
+  }
+  renderMenu();
+
+  function startGame(g){
+    currentGame = g;
+    dualMode = false; dualStage = 0; dualScores = [null,null];
+    menuScreen.style.display = 'none';
+    gameScreen.classList.add('active');
+    gameContainer.className = g.theme;
+    gameContainer.innerHTML = '';
+    gameTitleBar.textContent = g.icon + ' ' + g.title;
+    gameStats.textContent = '';
+    if(cleanupFn) { try{cleanupFn();}catch(e){} cleanupFn = null; }
+
+    if(DUAL_UNSUPPORTED.includes(g.id)){
+      cleanupFn = g.init(gameContainer, gameStats, g.id) || null;
+      return;
+    }
+    showPlayerCountPrompt();
+  }
+
+  function showPlayerCountPrompt(){
+    const div=document.createElement('div');
+    div.className='roundOverlay';
+    div.innerHTML = `<h2>👥 شلون تريد تلعب؟</h2><p>لاعب وحيد، أو لاعبين بالتناوب على نفس الجهاز (كل واحد يلعب دوره وبالآخر تتقارن النتيجة)</p>`;
+    const b1=document.createElement('button'); b1.className='actionBtn'; b1.textContent='🧍 لاعب واحد';
+    b1.addEventListener('click', ()=>{ div.remove(); launchSingle(); });
+    const b2=document.createElement('button'); b2.className='actionBtn secondary'; b2.textContent='👥 لاعبين';
+    b2.addEventListener('click', ()=>{ div.remove(); dualMode=true; dualScores=[null,null]; startDualTurn(1); });
+    div.appendChild(b1); div.appendChild(b2);
+    gameContainer.appendChild(div);
+  }
+
+  function launchSingle(){
+    gameContainer.innerHTML='';
+    cleanupFn = currentGame.init(gameContainer, gameStats, currentGame.id) || null;
+  }
+
+  function startDualTurn(stage){
+    dualStage = stage;
+    gameContainer.innerHTML='';
+    const div=document.createElement('div');
+    div.className='roundOverlay';
+    const name = stage===1 ? 'الأول' : 'الثاني';
+    div.innerHTML = `<h2>${stage===1?'🅰️':'🅱️'} دور اللاعب ${name}</h2><p>جهّز نفسك يا لاعب ${name}، ثم اضغط ابدأ</p>`;
+    const b=document.createElement('button'); b.className='actionBtn'; b.textContent='▶️ ابدأ';
+    b.addEventListener('click', ()=>{
+      div.remove();
+      gameContainer.innerHTML='';
+      cleanupFn = currentGame.init(gameContainer, gameStats, currentGame.id) || null;
+    });
+    div.appendChild(b);
+    gameContainer.appendChild(div);
+  }
+
+  backBtn.addEventListener('click', ()=>{
+    sfx('click');
+    if(cleanupFn){ try{cleanupFn();}catch(e){} cleanupFn=null; }
+    gameScreen.classList.remove('active');
+    menuScreen.style.display = 'block';
+  });
+
+  document.getElementById('soundToggleMenu').addEventListener('click', toggleSound);
+  document.getElementById('soundToggleGame').addEventListener('click', toggleSound);
+  updateSoundIcons();
+
+  function setStats(html){ gameStats.innerHTML = html; }
+
+  function makeCanvas(container){
+    const c = document.createElement('canvas');
+    container.appendChild(c);
+    const ctx = c.getContext('2d');
+    function resize(){
+      const rect = container.getBoundingClientRect();
+      const DPR = Math.min(window.devicePixelRatio||1,2);
+      c.width = rect.width*DPR; c.height = rect.height*DPR;
+      c.style.width = rect.width+'px'; c.style.height = rect.height+'px';
+      ctx.setTransform(DPR,0,0,DPR,0,0);
+      c.W = rect.width; c.H = rect.height;
+    }
+    resize();
+    window.addEventListener('resize', resize);
+    c._resizeHandler = resize;
+    return {canvas:c, ctx};
+  }
+  function destroyCanvas(c){
+    if(c && c._resizeHandler) window.removeEventListener('resize', c._resizeHandler);
+  }
+
+  function overlay(container, title, text, btnLabel, onClick, secondaryLabel, onSecondary, scoreInfo){
+    if(dualMode && dualStage>0){
+      if(cleanupFn){ try{cleanupFn();}catch(e){} cleanupFn=null; }
+      dualScores[dualStage-1] = { title, text, value: scoreInfo?scoreInfo.value:null, better: scoreInfo?scoreInfo.better:'high' };
+
+      const div=document.createElement('div');
+      div.className='roundOverlay';
+
+      if(dualStage===1){
+        div.innerHTML = `<h2>${title}</h2><p>${text}</p><p style="margin-top:10px;opacity:.85">✅ خلص دور اللاعب الأول</p>`;
+        const b=document.createElement('button'); b.className='actionBtn'; b.textContent='▶️ دور اللاعب الثاني';
+        b.addEventListener('click', ()=>{ div.remove(); startDualTurn(2); });
+        div.appendChild(b);
+      } else {
+        const s1=dualScores[0], s2=dualScores[1];
+        let resultLine = 'قارنوا النتيجتين وشوفوا مين أحسن 👀';
+        if(s1.value!==null && s2.value!==null){
+          const p1Better = s1.better==='low' ? s1.value<s2.value : s1.value>s2.value;
+          const p2Better = s1.better==='low' ? s2.value<s1.value : s2.value>s1.value;
+          if(p1Better) resultLine='🏆 فاز اللاعب الأول!';
+          else if(p2Better) resultLine='🏆 فاز اللاعب الثاني!';
+          else resultLine='🤝 تعادل!';
+        }
+        div.innerHTML = `<h2>🏁 خلصت الجولة الثنائية!</h2>
+          <p>🅰️ اللاعب الأول: ${s1.text}</p>
+          <p>🅱️ اللاعب الثاني: ${s2.text}</p>
+          <p style="margin-top:10px;font-weight:bold">${resultLine}</p>`;
+        const b=document.createElement('button'); b.className='actionBtn'; b.textContent='🔁 إعادة';
+        b.addEventListener('click', ()=>{ div.remove(); dualScores=[null,null]; startDualTurn(1); });
+        const b2=document.createElement('button'); b2.className='actionBtn secondary'; b2.textContent='🏠 القائمة';
+        b2.addEventListener('click', ()=>{ div.remove(); backBtn.click(); });
+        div.appendChild(b); div.appendChild(b2);
+      }
+      container.appendChild(div);
+      return div;
+    }
+
+    const div = document.createElement('div');
+    div.className = 'roundOverlay';
+    div.innerHTML = `<h2>${title}</h2><p>${text}</p>`;
+    const btn = document.createElement('button');
+    btn.className='actionBtn'; btn.textContent = btnLabel;
+    btn.addEventListener('click', ()=>{ div.remove(); onClick(); });
+    div.appendChild(btn);
+    if(secondaryLabel){
+      const b2 = document.createElement('button');
+      b2.className='actionBtn secondary'; b2.textContent = secondaryLabel;
+      b2.addEventListener('click', ()=>{ div.remove(); onSecondary(); });
+      div.appendChild(b2);
+    }
+    container.appendChild(div);
+    return div;
+  }
+
+  /* =========================================================
+     1) RUNNER — ركض الكابتن (football endless runner)
+  ========================================================= */
+  function initRunner(container){
+    const {canvas, ctx} = makeCanvas(container);
+    let W,H,groundY;
+    function sync(){ W=canvas.W; H=canvas.H; groundY = H*0.78; }
+    sync();
+
+    let running=true, score=0, speed=6, baseSpeed=6, gravity=0.9, frame=0, lives=3;
+    let obstacles=[], coins=[], particles=[], clouds=[], groundOffset=0, shakeTime=0;
+    const player = { x: Math.max(50,W*0.14), y:0, w:44, h:56, vy:0, jumping:false, jumpsUsed:0, maxJumps:1, legPhase:0, invincible:60 };
+    player.y = groundY - player.h;
+
+    for(let i=0;i<5;i++) clouds.push({x:Math.random()*600,y:20+Math.random()*100,s:0.5+Math.random()*0.8});
+
+    function doJump(){
+      if(!running) return;
+      if(player.jumpsUsed < player.maxJumps){ player.vy=-16; player.jumping=true; player.jumpsUsed++; spawnDust(player.x+player.w/2, groundY); sfx('jump'); }
+    }
+    function spawnDust(x,y){ for(let i=0;i<6;i++) particles.push({x,y,vx:(Math.random()-0.5)*3,vy:-Math.random()*2,life:20+Math.random()*10,r:2+Math.random()*2,color:'rgba(255,255,255,0.8)'}); }
+    function spawnHit(x,y){ for(let i=0;i<14;i++) particles.push({x,y,vx:(Math.random()-0.5)*6,vy:-Math.random()*6,life:30+Math.random()*15,r:2+Math.random()*3,color:'#ffd93b'}); }
+
+    let obstacleTimer=40, coinTimer=100;
+    function spawnObstacle(){
+      const types=['defender','cone','post']; const type=types[Math.floor(Math.random()*types.length)];
+      let w,h; if(type==='defender'){w=38;h=54;} else if(type==='cone'){w=30;h=38;} else {w=50;h=66;}
+      obstacles.push({x:W+20,y:groundY-h,w,h,type});
+    }
+    function spawnCoin(){ coins.push({x:W+20,y:groundY-40-Math.random()*130,r:13,bob:Math.random()*Math.PI*2}); }
+
+    function roundRect(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+
+    function update(){
+      frame++;
+      score += speed*0.045;
+      speed = baseSpeed + Math.min(score/300,9);
+      if(player.invincible>0) player.invincible--;
+      player.vy += gravity; player.y += player.vy;
+      if(player.y > groundY-player.h){ player.y=groundY-player.h; player.vy=0; if(player.jumping) spawnDust(player.x+player.w/2,groundY); player.jumping=false; player.jumpsUsed=0; }
+      player.legPhase += player.jumping?0:speed*0.06;
+
+      obstacleTimer--; if(obstacleTimer<=0){ spawnObstacle(); obstacleTimer=Math.max(70+Math.random()*50-Math.min(score/20,35),42); }
+      coinTimer--; if(coinTimer<=0){ spawnCoin(); coinTimer=90+Math.random()*90; }
+
+      for(let i=obstacles.length-1;i>=0;i--){
+        const o=obstacles[i]; o.x-=speed; if(o.x+o.w<-10){obstacles.splice(i,1);continue;}
+        if(player.invincible<=0 && player.x<o.x+o.w-8 && player.x+player.w-8>o.x && player.y<o.y+o.h-6 && player.y+player.h>o.y+8){
+          obstacles.splice(i,1); lives--; player.invincible=100; shakeTime=14; spawnHit(player.x+player.w/2,player.y+player.h/2); sfx('hit');
+          if(lives<=0){ endRound(); return; }
+        }
+      }
+      for(let i=coins.length-1;i>=0;i--){
+        const c=coins[i]; c.x-=speed; c.bob+=0.12; if(c.x<-20){coins.splice(i,1);continue;}
+        const dx=(player.x+player.w/2)-c.x, dy=(player.y+player.h/2)-(c.y+Math.sin(c.bob)*6);
+        if(Math.sqrt(dx*dx+dy*dy)<30){ coins.splice(i,1); score+=25; spawnHit(c.x,c.y); sfx('coin'); }
+      }
+      for(let i=particles.length-1;i>=0;i--){ const p=particles[i]; p.x+=p.vx;p.y+=p.vy;p.vy+=0.25;p.life--; if(p.life<=0)particles.splice(i,1); }
+      groundOffset-=speed; if(groundOffset<-40) groundOffset+=40;
+      clouds.forEach(c=>{ c.x-=speed*0.15*c.s; if(c.x<-100)c.x=W+100; });
+      if(shakeTime>0) shakeTime--;
+      setStats('🏆 '+Math.floor(score)+' &nbsp; '+'⚽'.repeat(Math.max(lives,0)));
+    }
+
+    function drawBG(){
+      ctx.fillStyle='rgba(255,255,255,0.85)';
+      clouds.forEach(c=>{ ctx.beginPath(); ctx.ellipse(c.x,c.y,30*c.s,14*c.s,0,0,7); ctx.ellipse(c.x+20*c.s,c.y+5*c.s,22*c.s,12*c.s,0,0,7); ctx.fill(); });
+      const grad=ctx.createLinearGradient(0,groundY,0,H); grad.addColorStop(0,'#4caf50'); grad.addColorStop(1,'#2e7d32');
+      ctx.fillStyle=grad; ctx.fillRect(0,groundY,W,H-groundY);
+      ctx.fillStyle='rgba(255,255,255,0.08)';
+      for(let x=groundOffset;x<W;x+=160) ctx.fillRect(x,groundY,80,H-groundY);
+      ctx.strokeStyle='rgba(255,255,255,0.6)'; ctx.lineWidth=3; ctx.beginPath(); ctx.moveTo(0,groundY); ctx.lineTo(W,groundY); ctx.stroke();
+    }
+    function drawPlayer(){
+      if(player.invincible>0 && Math.floor(frame/4)%2===0) return;
+      const x=player.x,y=player.y,w=player.w,h=player.h;
+      ctx.save(); ctx.translate(x+w/2,y+h/2);
+      const lean = player.jumping?-0.12:Math.sin(player.legPhase)*0.05; ctx.rotate(lean); ctx.translate(-(w/2),-(h/2));
+      ctx.fillStyle='#1b1b1b';
+      const legSwing = player.jumping?10:Math.sin(player.legPhase*2)*12;
+      ctx.fillRect(w*0.28-4,h*0.62,9,22+(player.jumping?0:Math.max(0,legSwing)));
+      ctx.fillRect(w*0.62-4,h*0.62,9,22+(player.jumping?0:Math.max(0,-legSwing)));
+      ctx.fillStyle='#1e63d6'; roundRect(w*0.18,h*0.28,w*0.64,h*0.4,8); ctx.fill();
+      ctx.fillStyle='#fff'; ctx.fillRect(w*0.18,h*0.28,w*0.64,h*0.08);
+      ctx.fillStyle='#1e63d6'; ctx.fillRect(w*0.08,h*0.32,8,24); ctx.fillRect(w*0.84,h*0.32,8,24);
+      ctx.fillStyle='#f2c39a'; ctx.beginPath(); ctx.arc(w*0.5,h*0.18,w*0.24,0,7); ctx.fill();
+      ctx.fillStyle='#2b1b0f'; ctx.beginPath(); ctx.arc(w*0.5,h*0.1,w*0.24,Math.PI,Math.PI*2); ctx.fill();
+      ctx.restore();
+    }
+    function drawObstacles(){
+      obstacles.forEach(o=>{
+        if(o.type==='cone'){ ctx.fillStyle='#ff7a1a'; ctx.beginPath(); ctx.moveTo(o.x+o.w/2,o.y); ctx.lineTo(o.x+o.w,o.y+o.h); ctx.lineTo(o.x,o.y+o.h); ctx.closePath(); ctx.fill(); ctx.fillStyle='#fff'; ctx.fillRect(o.x+o.w*0.15,o.y+o.h*0.55,o.w*0.7,o.h*0.14); }
+        else if(o.type==='defender'){ ctx.fillStyle='#d32f2f'; roundRect(o.x+o.w*0.15,o.y+o.h*0.25,o.w*0.7,o.h*0.45,6); ctx.fill(); ctx.fillStyle='#f2c39a'; ctx.beginPath(); ctx.arc(o.x+o.w/2,o.y+o.h*0.15,o.w*0.28,0,7); ctx.fill(); ctx.fillStyle='#1b1b1b'; ctx.fillRect(o.x+o.w*0.2,o.y+o.h*0.65,8,o.h*0.35); ctx.fillRect(o.x+o.w*0.6,o.y+o.h*0.65,8,o.h*0.35); }
+        else { ctx.strokeStyle='#fff'; ctx.lineWidth=6; ctx.beginPath(); ctx.moveTo(o.x,o.y+o.h); ctx.lineTo(o.x,o.y); ctx.lineTo(o.x+o.w,o.y); ctx.lineTo(o.x+o.w,o.y+o.h); ctx.stroke(); }
+      });
+    }
+    function drawCoins(){
+      coins.forEach(c=>{ const yy=c.y+Math.sin(c.bob)*6; ctx.save(); ctx.translate(c.x,yy); ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(0,0,c.r,0,7); ctx.fill(); ctx.strokeStyle='#1b1b1b'; ctx.stroke(); ctx.fillStyle='#1b1b1b'; ctx.beginPath(); ctx.arc(0,0,5,0,7); ctx.fill(); ctx.restore(); });
+    }
+    function drawParticles(){ particles.forEach(p=>{ ctx.globalAlpha=Math.max(p.life/40,0); ctx.fillStyle=p.color; ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,7); ctx.fill(); ctx.globalAlpha=1; }); }
+
+    function draw(){
+      ctx.clearRect(0,0,W,H); ctx.save();
+      if(shakeTime>0) ctx.translate((Math.random()-0.5)*8,(Math.random()-0.5)*8);
+      drawBG(); drawCoins(); drawObstacles(); drawPlayer(); drawParticles();
+      ctx.restore();
+    }
+
+    let raf;
+    function loop(){ sync(); if(running) update(); draw(); raf=requestAnimationFrame(loop); }
+
+    function endRound(){
+      running=false; sfx('gameover');
+      const key='runner'; if(!bestScores[key] || score>bestScores[key]) bestScores[key]=score;
+      overlay(container,'💥 خلصت!', 'نتيجتك: '+Math.floor(score)+' | الأفضل: '+Math.floor(bestScores[key]), '🔁 حاول مرة ثانية', ()=>{ cleanupFn(); cleanupFn=initRunner(container); }, null, null, {value:Math.floor(score), better:'high'});
+    }
+
+    const onKey = (e)=>{ if(e.code==='Space'||e.code==='ArrowUp'){ e.preventDefault(); doJump(); } };
+    const onPointer = ()=> doJump();
+    window.addEventListener('keydown', onKey);
+    canvas.addEventListener('pointerdown', onPointer);
+
+    const hint = document.createElement('div'); hint.className='hint'; hint.textContent='اضغط الشاشة أو Space للقفز'; container.appendChild(hint);
+
+    raf = requestAnimationFrame(loop);
+    return ()=>{ cancelAnimationFrame(raf); window.removeEventListener('keydown',onKey); destroyCanvas(canvas); };
+  }
+
+  /* =========================================================
+     2) SNAKE — الثعبان النيون
+  ========================================================= */
+  function initSnake(container){
+    const {canvas, ctx} = makeCanvas(container);
+    let W,H,cell,cols,rows;
+    function sync(){ W=canvas.W; H=canvas.H; cell=Math.floor(Math.min(W,H)/18); cols=Math.floor(W/cell); rows=Math.floor(H/cell); }
+    sync();
+
+    let snake, dir, nextDir, food, score, running, tickTimer, speedMs;
+    function reset(){
+      snake=[{x:Math.floor(cols/2),y:Math.floor(rows/2)}];
+      dir={x:1,y:0}; nextDir={x:1,y:0}; score=0; running=true; speedMs=140;
+      placeFood();
+    }
+    function placeFood(){
+      let ok=false, fx,fy;
+      while(!ok){ fx=Math.floor(Math.random()*cols); fy=Math.floor(Math.random()*rows); ok=!snake.some(s=>s.x===fx&&s.y===fy); }
+      food={x:fx,y:fy};
+    }
+    reset();
+
+    function step(){
+      if(!running) return;
+      dir=nextDir;
+      const head={x:snake[0].x+dir.x, y:snake[0].y+dir.y};
+      if(head.x<0||head.y<0||head.x>=cols||head.y>=rows || snake.some(s=>s.x===head.x&&s.y===head.y)){
+        endRound(); return;
+      }
+      snake.unshift(head);
+      if(head.x===food.x && head.y===food.y){ score+=10; placeFood(); speedMs=Math.max(70,speedMs-2); sfx('coin'); }
+      else snake.pop();
+      setStats('🍏 '+score+' &nbsp; 🐍 '+snake.length);
+    }
+
+    function draw(){
+      ctx.clearRect(0,0,W,H);
+      ctx.fillStyle='rgba(255,255,255,0.03)';
+      for(let x=0;x<cols;x++) for(let y=0;y<rows;y++) if((x+y)%2===0) ctx.fillRect(x*cell,y*cell,cell,cell);
+      ctx.fillStyle='#ff4d6d';
+      ctx.beginPath(); ctx.arc(food.x*cell+cell/2, food.y*cell+cell/2, cell*0.4, 0, 7); ctx.fill();
+      snake.forEach((s,i)=>{
+        const t = i/snake.length;
+        ctx.fillStyle = i===0 ? '#4ecdc4' : `hsl(${170-t*60},80%,${55-t*20}%)`;
+        ctx.beginPath(); ctx.roundRect ? ctx.roundRect(s.x*cell+1,s.y*cell+1,cell-2,cell-2,5) : ctx.rect(s.x*cell+1,s.y*cell+1,cell-2,cell-2);
+        ctx.fill();
+      });
+    }
+
+    let raf, lastTick=0;
+    function loop(ts){
+      if(!lastTick) lastTick=ts;
+      if(running && ts-lastTick>speedMs){ step(); lastTick=ts; }
+      draw();
+      raf=requestAnimationFrame(loop);
+    }
+
+    function setDir(nx,ny){ if(nx===-dir.x && ny===-dir.y) return; nextDir={x:nx,y:ny}; }
+    const onKey=(e)=>{
+      if(e.key==='ArrowUp'||e.key==='w') setDir(0,-1);
+      else if(e.key==='ArrowDown'||e.key==='s') setDir(0,1);
+      else if(e.key==='ArrowLeft'||e.key==='a') setDir(-1,0);
+      else if(e.key==='ArrowRight'||e.key==='d') setDir(1,0);
+    };
+    window.addEventListener('keydown', onKey);
+
+    let touchStart=null;
+    const onTS=(e)=>{ touchStart={x:e.touches[0].clientX,y:e.touches[0].clientY}; };
+    const onTE=(e)=>{
+      if(!touchStart) return;
+      const dx=e.changedTouches[0].clientX-touchStart.x, dy=e.changedTouches[0].clientY-touchStart.y;
+      if(Math.abs(dx)>Math.abs(dy)){ setDir(dx>0?1:-1,0); } else { setDir(0,dy>0?1:-1); }
+      touchStart=null;
+    };
+    canvas.addEventListener('touchstart', onTS);
+    canvas.addEventListener('touchend', onTE);
+
+    function endRound(){
+      running=false; sfx('gameover');
+      const key='snake'; if(!bestScores[key]||score>bestScores[key]) bestScores[key]=score;
+      overlay(container,'🐍 انتهت اللعبة','نتيجتك: '+score+' | الأفضل: '+bestScores[key],'🔁 من جديد',()=>{ cleanupFn(); cleanupFn=initSnake(container); }, null, null, {value:score, better:'high'});
+    }
+
+    const hint=document.createElement('div'); hint.className='hint'; hint.textContent='الأسهم أو WASD أو اسحب بإصبعك للتحكم'; container.appendChild(hint);
+
+    raf=requestAnimationFrame(loop);
+    return ()=>{ cancelAnimationFrame(raf); window.removeEventListener('keydown',onKey); canvas.removeEventListener('touchstart',onTS); canvas.removeEventListener('touchend',onTE); destroyCanvas(canvas); };
+  }
+
+  /* =========================================================
+     3) MEMORY MATCH — لعبة الذاكرة الفضائية
+  ========================================================= */
+  function initMemory(container){
+    const emojis=['🚀','🪐','⭐','🌙','☄️','👽','🛸','🌌','🌠','🌟','🔭','🛰️'];
+    const SIZES=[
+      { id:'s',  label:'صغيرة',    sub:'12 بطاقة', pairs:6,  cols:3 },
+      { id:'m',  label:'متوسطة',   sub:'16 بطاقة', pairs:8,  cols:4 },
+      { id:'l',  label:'كبيرة',    sub:'20 بطاقة', pairs:10, cols:4 },
+      { id:'xl', label:'كبيرة جدًا', sub:'24 بطاقة', pairs:12, cols:4 },
+    ];
+    const wrap=document.createElement('div'); wrap.className='domGame';
+    container.appendChild(wrap);
+
+    let deck, flipped, matched, moves, lock, players, turn, scores, size;
+
+    function showSizeSelect(){
+      wrap.innerHTML='';
+      const title=document.createElement('div');
+      title.style.cssText='text-align:center;font-size:19px;font-weight:bold;margin-bottom:14px';
+      title.textContent='📐 اختر حجم اللعبة';
+      wrap.appendChild(title);
+      const grid=document.createElement('div'); grid.className='kidLevelGrid'; grid.style.maxWidth='360px';
+      SIZES.forEach(s=>{
+        const b=document.createElement('button'); b.className='kidLevelBtn';
+        b.innerHTML = `<span class="num" style="font-size:22px">${s.label}</span><span class="lbl">${s.sub}</span>`;
+        b.addEventListener('click', ()=>{ sfx('click'); size=s; showModeSelect(); });
+        grid.appendChild(b);
+      });
+      wrap.appendChild(grid);
+      setStats('');
+    }
+
+    function showModeSelect(){
+      wrap.innerHTML='';
+      const box=document.createElement('div'); box.style.textAlign='center';
+      box.innerHTML = `<div style="font-size:20px;font-weight:bold;margin-bottom:16px">🧠 شلون تريد تلعب الذاكرة؟</div>`;
+      const btnRow=document.createElement('div'); btnRow.style.display='flex'; btnRow.style.gap='10px'; btnRow.style.justifyContent='center'; btnRow.style.flexWrap='wrap';
+      const b1=document.createElement('button'); b1.className='actionBtn'; b1.textContent='🧍 لاعب واحد';
+      b1.addEventListener('click', ()=>{ sfx('click'); startRound(1); });
+      const b2=document.createElement('button'); b2.className='actionBtn secondary'; b2.textContent='👥 لاعبين بالتناوب';
+      b2.addEventListener('click', ()=>{ sfx('click'); startRound(2); });
+      btnRow.appendChild(b1); btnRow.appendChild(b2);
+      box.appendChild(btnRow);
+      wrap.appendChild(box);
+      const back=document.createElement('div'); back.style.cssText='text-align:center;margin-top:14px';
+      const bb=document.createElement('button'); bb.className='actionBtn secondary'; bb.style.padding='8px 20px'; bb.style.fontSize='13px'; bb.textContent='↩️ تغيير الحجم';
+      bb.addEventListener('click', ()=>{ sfx('click'); showSizeSelect(); });
+      back.appendChild(bb); wrap.appendChild(back);
+      setStats('');
+    }
+
+    function startRound(numPlayers){
+      const chosen = emojis.slice(0, size.pairs);
+      deck = [...chosen, ...chosen].sort(()=>Math.random()-0.5);
+      flipped=[]; matched=new Set(); moves=0; lock=false;
+      players=numPlayers; turn=1; scores=[0,0];
+
+      wrap.innerHTML='';
+      const info=document.createElement('div'); info.style.width='100%'; info.style.maxWidth='420px';
+      const grid=document.createElement('div'); grid.className='cardsGrid';
+      grid.style.gridTemplateColumns=`repeat(${size.cols},1fr)`;
+      grid.style.maxHeight='58vh';
+      grid.style.overflowY='auto';
+      wrap.appendChild(info); wrap.appendChild(grid);
+
+      function updateInfo(){
+        if(players===1){
+          info.innerHTML = `<div style="text-align:center;font-weight:bold;font-size:15px">🧠 اقلب بطاقتين وحاول تطابقهم!</div>`;
+          return;
+        }
+        const c1 = '#4ecdc4', c2 = '#ff6b6b';
+        info.innerHTML = `
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+            <div style="flex:1;text-align:center;background:${turn===1?'rgba(78,205,196,0.22)':'rgba(255,255,255,0.06)'};border:2px solid ${turn===1?c1:'transparent'};border-radius:14px;padding:8px 6px;transition:.2s">
+              <div style="font-size:12px;opacity:.85">🅰️ اللاعب الأول</div>
+              <div style="font-size:24px;font-weight:900;color:${c1}">${scores[0]}</div>
+            </div>
+            <div style="text-align:center;font-weight:bold;font-size:13px;white-space:nowrap">
+              ${turn===1?'⬅️':''}<br>دور ${turn===1?'الأول':'الثاني'}<br>${turn===2?'➡️':''}
+            </div>
+            <div style="flex:1;text-align:center;background:${turn===2?'rgba(255,107,107,0.22)':'rgba(255,255,255,0.06)'};border:2px solid ${turn===2?c2:'transparent'};border-radius:14px;padding:8px 6px;transition:.2s">
+              <div style="font-size:12px;opacity:.85">🅱️ اللاعب الثاني</div>
+              <div style="font-size:24px;font-weight:900;color:${c2}">${scores[1]}</div>
+            </div>
+          </div>`;
+      }
+
+      function render(){
+        grid.innerHTML='';
+        deck.forEach((val,idx)=>{
+          const c=document.createElement('div');
+          c.className='memCard'+(flipped.includes(idx)||matched.has(idx)?' flipped':'');
+          if(matched.has(idx)) c.classList.add('matched');
+          c.textContent = (flipped.includes(idx)||matched.has(idx)) ? val : '❓';
+          c.addEventListener('click', ()=>onFlip(idx));
+          grid.appendChild(c);
+        });
+        updateInfo();
+        setStats(players===1 ? ('🔁 '+moves+' حركة') : ('🔁 '+moves+' حركة الكل &nbsp;|&nbsp; 🅰️ '+scores[0]+' — '+scores[1]+' 🅱️'));
+      }
+
+      function onFlip(idx){
+        if(lock || flipped.includes(idx) || matched.has(idx)) return;
+        flipped.push(idx); render(); sfx('flip');
+        if(flipped.length===2){
+          moves++;
+          lock=true;
+          const [a,b]=flipped;
+          if(deck[a]===deck[b]){
+            matched.add(a); matched.add(b);
+            if(players===2) scores[turn-1]++;
+            flipped=[]; lock=false; render(); sfx('match');
+            if(matched.size===deck.length){ setTimeout(endRound, 350); return; }
+            // طابق صح ⇒ نفس اللاعب يضل يلعب دوره
+          } else {
+            setTimeout(()=>{
+              flipped=[]; lock=false;
+              if(players===2) turn = (turn===1?2:1); // ما طابق ⇒ ينتقل الدور
+              render(); sfx('wrong');
+            }, 700);
+          }
+        }
+      }
+
+      function endRound(){
+        sfx('win');
+        if(players===1){
+          const key='memory_'+size.id; if(!bestScores[key]||moves<bestScores[key]) bestScores[key]=moves;
+          overlay(container,'🎉 خلصت!','طابقت الكل بـ '+moves+' حركة | أفضل نتيجة: '+bestScores[key]+' حركة','🔁 من جديد',()=>{ startRound(1); }, '📐 تغيير الحجم', ()=>{ showSizeSelect(); });
+        } else {
+          let msg;
+          if(scores[0]>scores[1]) msg = '🏆 فاز اللاعب الأول (X) بنتيجة '+scores[0]+' مقابل '+scores[1]+'!';
+          else if(scores[1]>scores[0]) msg = '🏆 فاز اللاعب الثاني بنتيجة '+scores[1]+' مقابل '+scores[0]+'!';
+          else msg = '🤝 تعادل! '+scores[0]+' — '+scores[1];
+          overlay(container,'🎉 خلصت المباراة!', msg, '🔁 مباراة جديدة', ()=>{ startRound(2); }, '🏠 القائمة', ()=>{ backBtn.click(); });
+        }
+      }
+
+      render();
+    }
+
+    showSizeSelect();
+    return ()=>{};
+  }
+
+  /* =========================================================
+     4) MATH QUIZ — تحدي الرياضيات
+  ========================================================= */
+  function initMathQuiz(container){
+    let qIndex=0, score=0, totalQ=10, timeLeft, timerId, answered=false;
+    const wrap=document.createElement('div'); wrap.className='domGame';
+    container.appendChild(wrap);
+
+    function genQuestion(){
+      const ops=['+','-','×'];
+      const op = ops[Math.floor(Math.random()*ops.length)];
+      const level = Math.floor(qIndex/3);
+      let a,b,answer;
+      if(op==='+'){ a=rnd(1+level*5,20+level*10); b=rnd(1+level*5,20+level*10); answer=a+b; }
+      else if(op==='-'){ a=rnd(5+level*5,30+level*10); b=rnd(1,a); answer=a-b; }
+      else { a=rnd(2,6+level*2); b=rnd(2,6+level*2); answer=a*b; }
+      const opts=new Set([answer]);
+      while(opts.size<4){ const delta=rnd(-10-level*3,10+level*3); if(delta!==0 && answer+delta>=0) opts.add(answer+delta); }
+      return {text:`${a} ${op} ${b} = ؟`, answer, options:[...opts].sort(()=>Math.random()-0.5)};
+    }
+    function rnd(min,max){ return Math.floor(Math.random()*(max-min+1))+min; }
+
+    function renderQ(){
+      answered=false;
+      const q=genQuestion(); currentQ=q;
+      wrap.innerHTML='';
+      const pb=document.createElement('div'); pb.className='problemBox'; pb.textContent=q.text; wrap.appendChild(pb);
+      const tbw=document.createElement('div'); tbw.className='timerBarWrap'; const tb=document.createElement('div'); tb.className='timerBar'; tbw.appendChild(tb); wrap.appendChild(tbw);
+      const og=document.createElement('div'); og.className='optionsGrid';
+      q.options.forEach(opt=>{
+        const b=document.createElement('button'); b.className='optBtn'; b.textContent=opt;
+        b.addEventListener('click', ()=>checkAnswer(opt,b,og));
+        og.appendChild(b);
+      });
+      wrap.appendChild(og);
+      setStats('السؤال '+(qIndex+1)+'/'+totalQ+' &nbsp; 🏆 '+score);
+
+      timeLeft=100;
+      clearInterval(timerId);
+      timerId=setInterval(()=>{
+        timeLeft-=2;
+        tb.style.width=Math.max(timeLeft,0)+'%';
+        if(timeLeft<=0){ clearInterval(timerId); if(!answered) checkAnswer(null,null,og); }
+      },200);
+    }
+    let currentQ;
+
+    function checkAnswer(val, btn, og){
+      if(answered) return; answered=true;
+      clearInterval(timerId);
+      [...og.children].forEach(b=>{
+        if(parseInt(b.textContent)===currentQ.answer) b.classList.add('correct');
+        else if(b===btn) b.classList.add('wrong');
+        b.disabled=true;
+      });
+      if(val===currentQ.answer){ score+=10; sfx('correct'); } else { sfx('wrong'); }
+      setTimeout(()=>{
+        qIndex++;
+        if(qIndex>=totalQ) endRound(); else renderQ();
+      }, 700);
+    }
+
+    function endRound(){
+      sfx('win');
+      const key='mathquiz'; if(!bestScores[key]||score>bestScores[key]) bestScores[key]=score;
+      overlay(container,'🏁 خلص التحدي!','نتيجتك: '+score+'/100 | الأفضل: '+bestScores[key],'🔁 حاول مرة ثانية',()=>{ cleanupFn(); cleanupFn=initMathQuiz(container); }, null, null, {value:score, better:'high'});
+    }
+
+    renderQ();
+    return ()=>{ clearInterval(timerId); };
+  }
+
+  /* =========================================================
+     4ب) KIDS MATH — رياضيات الصغار (٥ سنوات وأقل)
+  ========================================================= */
+  function initKidsMath(container){
+    const wrap=document.createElement('div'); wrap.className='domGame';
+    container.appendChild(wrap);
+    const fruit=['🍎','🍌','🍇','🍓','⭐','🎈','🐣','🐠'];
+    const pickFruit=()=> fruit[Math.floor(Math.random()*fruit.length)];
+    let level, totalQ=8, qIndex, correctCount, currentQ, destroyed=false;
+
+    function showLevelSelect(){
+      wrap.innerHTML='';
+      const title=document.createElement('div');
+      title.style.cssText='text-align:center;font-size:19px;font-weight:bold;margin-bottom:4px';
+      title.textContent='🧮 اختر رقم المستوى';
+      const sub=document.createElement('div');
+      sub.style.cssText='text-align:center;font-size:13px;opacity:.85;margin-bottom:4px';
+      sub.textContent='(مناسب لعمر ٥ سنوات وأقل)';
+      wrap.appendChild(title); wrap.appendChild(sub);
+      const grid=document.createElement('div'); grid.className='kidLevelGrid';
+      const labels=['عد ونباهة','سهلة','متوسطة','فيها طرح','تحدي كبير'];
+      for(let i=1;i<=5;i++){
+        const b=document.createElement('button'); b.className='kidLevelBtn';
+        b.innerHTML = `<span class="num">${i}</span><span class="lbl">${labels[i-1]}</span>`;
+        b.addEventListener('click', ()=>{ sfx('click'); level=i; startRound(); });
+        grid.appendChild(b);
+      }
+      wrap.appendChild(grid);
+      setStats('');
+    }
+
+    function genQuestion(){
+      const maxNum=[3,5,7,10,10][level-1];
+      const allowSub = level>=4;
+      const useSub = allowSub && Math.random()<0.5;
+      let a,b,answer,op;
+      if(useSub){
+        op='−';
+        a=rnd(1,maxNum);
+        b=rnd(0,a);
+        answer=a-b;
+      } else {
+        op='+';
+        a=rnd(0,maxNum);
+        b=rnd(0,maxNum-a);
+        if(a===0 && b===0) b=1;
+        answer=a+b;
+      }
+      const f=pickFruit();
+      const opts=new Set([answer]);
+      while(opts.size<3){
+        const delta=rnd(-2,2);
+        const cand=answer+delta;
+        if(cand>=0 && cand<=Math.max(maxNum, answer)) opts.add(cand);
+      }
+      return { a, b, op, answer, f, options:[...opts].sort(()=>Math.random()-0.5) };
+    }
+    function rnd(min,max){ return Math.floor(Math.random()*(max-min+1))+min; }
+
+    function renderQ(){
+      if(destroyed) return;
+      currentQ=genQuestion();
+      wrap.innerHTML='';
+      const visualA = currentQ.a>0 ? currentQ.f.repeat(currentQ.a) : '—';
+      const visualB = currentQ.b>0 ? currentQ.f.repeat(currentQ.b) : '—';
+      const visWrap=document.createElement('div'); visWrap.style.textAlign='center';
+      visWrap.innerHTML = `
+        <div class="kidVisual">${visualA} ${currentQ.op} ${visualB}</div>
+        <div class="problemBox" style="margin-top:10px">${currentQ.a} ${currentQ.op} ${currentQ.b} = ؟</div>`;
+      wrap.appendChild(visWrap);
+      const og=document.createElement('div'); og.className='kidOptGrid';
+      currentQ.options.forEach(opt=>{
+        const b=document.createElement('button'); b.className='kidOptBtn'; b.textContent=opt;
+        b.addEventListener('click', ()=>checkAnswer(opt,b,og));
+        og.appendChild(b);
+      });
+      wrap.appendChild(og);
+      setStats('🧮 السؤال '+(qIndex+1)+'/'+totalQ+' &nbsp; ⭐ '+correctCount);
+    }
+
+    function checkAnswer(val,btn,og){
+      [...og.children].forEach(b=>{
+        if(parseInt(b.textContent)===currentQ.answer) b.classList.add('correct');
+        else if(b===btn) b.classList.add('wrong');
+        b.disabled=true;
+      });
+      if(val===currentQ.answer){ correctCount++; sfx('correct'); } else { sfx('wrong'); }
+      setTimeout(()=>{
+        if(destroyed) return;
+        qIndex++;
+        if(qIndex>=totalQ) endRound(); else renderQ();
+      }, 900);
+    }
+
+    function endRound(){
+      sfx('win');
+      const stars = correctCount>=totalQ ? 3 : correctCount>=Math.ceil(totalQ*0.6) ? 2 : 1;
+      const key='kidsmath_'+level; if(!bestScores[key]||correctCount>bestScores[key]) bestScores[key]=correctCount;
+      overlay(container,'🎉 أحسنت!','⭐'.repeat(stars)+'☆'.repeat(3-stars)+'<br>جاوبت صح على '+correctCount+' من '+totalQ,'🔁 حاول مرة ثانية',()=>{ startRound(); }, '🔢 غيّر المستوى', ()=>{ showLevelSelect(); });
+    }
+
+    function startRound(){
+      qIndex=0; correctCount=0;
+      renderQ();
+    }
+
+    showLevelSelect();
+    return function cleanup(){ destroyed=true; };
+  }
+
+  /* =========================================================
+     5) CATCH — اصطد الجواب الصح
+  ========================================================= */
+  function initCatch(container){
+    const {canvas, ctx} = makeCanvas(container);
+    let W,H; function sync(){ W=canvas.W; H=canvas.H; } sync();
+
+    let basketX, basketW=70, basketH=26, score=0, lives=3, running=true, bubbles=[], problem, speed=2.2, spawnTimer=0;
+    basketX = 0;
+
+    function rnd(min,max){ return Math.floor(Math.random()*(max-min+1))+min; }
+    function newProblem(){
+      const ops=['+','-','×']; const op=ops[Math.floor(Math.random()*ops.length)];
+      let a,b,answer;
+      if(op==='+'){ a=rnd(1,15); b=rnd(1,15); answer=a+b; }
+      else if(op==='-'){ a=rnd(5,20); b=rnd(1,a); answer=a-b; }
+      else { a=rnd(1,6); b=rnd(1,6); answer=a*b; }
+      problem = {text:`${a} ${op} ${b} = ؟`, answer};
+      bubbles=[];
+      spawnBubble(true);
+    }
+    function spawnBubble(correct){
+      let val;
+      if(correct) val = problem.answer;
+      else { do { val = problem.answer + rnd(-8,8); } while(val===problem.answer || val<0); }
+      bubbles.push({x:rnd(40,W-40), y:-30, r:26, val, correct, vy: speed+Math.random()});
+    }
+
+    function update(){
+      spawnTimer--;
+      if(spawnTimer<=0){ spawnBubble(false); spawnTimer=55; }
+      for(let i=bubbles.length-1;i>=0;i--){
+        const b=bubbles[i]; b.y+=b.vy;
+        if(b.y>H+30){
+          if(b.correct){ lives--; sfx('wrong'); if(lives<=0){ endRound(); return; } newProblem(); }
+          bubbles.splice(i,1); continue;
+        }
+        if(b.y+b.r>H-basketH-10 && b.x>basketX-basketW/2-10 && b.x<basketX+basketW/2+10){
+          bubbles.splice(i,1);
+          if(b.correct){ score+=10; speed=Math.min(speed+0.08,6); newProblem(); sfx('correct'); }
+          else { score=Math.max(0,score-5); lives--; sfx('wrong'); if(lives<=0){ endRound(); return; } }
+        }
+      }
+      setStats('🏆 '+score+' &nbsp; ❤️'.repeat(Math.max(lives,0)));
+    }
+
+    function draw(){
+      ctx.clearRect(0,0,W,H);
+      // problem banner
+      ctx.fillStyle='rgba(0,0,0,0.25)'; ctx.fillRect(0,0,W,54);
+      ctx.fillStyle='#fff'; ctx.font='bold 26px Tahoma'; ctx.textAlign='center';
+      ctx.fillText(problem.text, W/2, 36);
+
+      bubbles.forEach(b=>{
+        ctx.beginPath(); ctx.fillStyle = b.correct? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.7)';
+        ctx.arc(b.x,b.y,b.r,0,7); ctx.fill();
+        ctx.fillStyle='#0b2e00'; ctx.font='bold 20px Tahoma'; ctx.fillText(b.val, b.x, b.y+7);
+      });
+
+      // basket
+      ctx.fillStyle='#5d4037';
+      ctx.beginPath();
+      ctx.moveTo(basketX-basketW/2, H-basketH-10);
+      ctx.lineTo(basketX+basketW/2, H-basketH-10);
+      ctx.lineTo(basketX+basketW/2-8, H-10);
+      ctx.lineTo(basketX-basketW/2+8, H-10);
+      ctx.closePath(); ctx.fill();
+    }
+
+    let raf;
+    function loop(){ sync(); if(basketX===0) basketX=W/2; if(running) update(); draw(); raf=requestAnimationFrame(loop); }
+
+    function movePointer(clientX){
+      const rect=canvas.getBoundingClientRect();
+      basketX = Math.max(basketW/2, Math.min(W-basketW/2, clientX-rect.left));
+    }
+    const onMove=(e)=> movePointer(e.touches? e.touches[0].clientX : e.clientX);
+    canvas.addEventListener('pointermove', onMove);
+    canvas.addEventListener('touchmove', onMove);
+
+    const onKey=(e)=>{
+      if(e.key==='ArrowLeft') basketX=Math.max(basketW/2, basketX-30);
+      if(e.key==='ArrowRight') basketX=Math.min(W-basketW/2, basketX+30);
+    };
+    window.addEventListener('keydown', onKey);
+
+    function endRound(){
+      running=false; sfx('gameover');
+      const key='catch'; if(!bestScores[key]||score>bestScores[key]) bestScores[key]=score;
+      overlay(container,'🍎 خلصت المحاولات','نتيجتك: '+score+' | الأفضل: '+bestScores[key],'🔁 حاول مرة ثانية',()=>{ cleanupFn(); cleanupFn=initCatch(container); }, null, null, {value:score, better:'high'});
+    }
+
+    const hint=document.createElement('div'); hint.className='hint'; hint.textContent='حرك السلة بإصبعك أو الماوس أو الأسهم — اصطد الجواب الصحيح فقط'; container.appendChild(hint);
+
+    newProblem();
+    raf=requestAnimationFrame(loop);
+    return ()=>{ cancelAnimationFrame(raf); canvas.removeEventListener('pointermove',onMove); canvas.removeEventListener('touchmove',onMove); window.removeEventListener('keydown',onKey); destroyCanvas(canvas); };
+  }
+
+  /* =========================================================
+     6) TIC TAC TOE — اكس أو
+  ========================================================= */
+  function initTicTacToe(container){
+    // لعبة اكس أو لشخصين — بدون تعادل: كل لاعب حقه 3 قطع بس.
+    // أول 6 أدوار (3 لكل واحد) وضع قطع عادي. بعدها ما تنحط قطع جديدة،
+    // كل لاعب يختار وحدة من قطعه الموجودة ويحركها لخانة فاضية جنبها، وتستمر اللعبة لين واحد يفوز.
+    let board = Array(9).fill(null);
+    let positions = { X:[], O:[] };
+    let turn='X';
+    let phase='place'; // 'place' | 'move'
+    let selected=null;
+    let over=false, wins={X:0,O:0};
+
+    const wrap=document.createElement('div'); wrap.className='domGame';
+    const info=document.createElement('div'); info.style.fontWeight='bold';
+    const grid=document.createElement('div'); grid.className='ticGrid';
+    wrap.appendChild(info); wrap.appendChild(grid); container.appendChild(wrap);
+
+    const LINES=[[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+    function checkWin(b, sym){ return LINES.some(l=> l.every(i=>b[i]===sym)); }
+    function validMoveTargets(){
+      if(phase!=='move' || selected===null) return [];
+      return board.map((v,i)=>v===null ? i : null).filter(i=>i!==null);
+    }
+    function hasAnyMove(sym){
+      return board.some(v=>v===null); // أي خانة فاضية = حركة متاحة
+    }
+
+    function updateInfo(){
+      if(over) return;
+      const name = turn==='X' ? 'الأول (X)' : 'الثاني (O)';
+      if(phase==='place') info.textContent = '🔵 دور اللاعب '+name+' — حط قطعة';
+      else if(selected===null) info.textContent = '🔵 دور اللاعب '+name+' — اختار وحدة من قطعك تريد تحركها';
+      else info.textContent = '🔵 دور اللاعب '+name+' — اضغط أي خانة فاضية عشان تحرك القطعة إلها';
+    }
+
+    function render(){
+      grid.innerHTML='';
+      const targets = validMoveTargets();
+      board.forEach((v,i)=>{
+        const c=document.createElement('div'); c.className='ticCell'; c.textContent=v||'';
+        c.style.color = v==='X' ? '#4ecdc4' : '#ff6b6b';
+        if(i===selected) c.classList.add('selected');
+        if(targets.includes(i)) c.classList.add('validMove');
+        c.addEventListener('click', ()=>cellClick(i));
+        grid.appendChild(c);
+      });
+      setStats('🏆 اللاعب الأول (X): '+wins.X+' &nbsp; 🏆 اللاعب الثاني (O): '+wins.O);
+      updateInfo();
+    }
+
+    function afterMoveCheck(sym){
+      if(checkWin(board,sym)){
+        wins[sym]++; sfx('win');
+        render();
+        finish(sym==='X' ? '🎉 فاز اللاعب الأول (X)!' : '🎉 فاز اللاعب الثاني (O)!');
+        return true;
+      }
+      return false;
+    }
+
+    function endTurn(){
+      turn = turn==='X' ? 'O' : 'X';
+      selected=null;
+      if(phase==='move' && !hasAnyMove(turn)){
+        // ما عنده حركة متاحة، يرجع الدور للطرف الثاني
+        turn = turn==='X' ? 'O' : 'X';
+      }
+      render();
+    }
+
+    function cellClick(i){
+      if(over) return;
+      const sym = turn;
+
+      if(phase==='place'){
+        if(board[i]) return;
+        board[i]=sym; positions[sym].push(i);
+        sfx('click');
+        if(afterMoveCheck(sym)) return;
+        if(positions.X.length===3 && positions.O.length===3){ phase='move'; }
+        endTurn();
+        return;
+      }
+
+      // phase === 'move'
+      if(board[i]===sym){
+        selected = (selected===i) ? null : i;
+        render();
+        return;
+      }
+      if(selected!==null && board[i]===null){
+        board[selected]=null;
+        board[i]=sym;
+        const arr=positions[sym]; arr[arr.indexOf(selected)]=i;
+        sfx('click');
+        if(afterMoveCheck(sym)) return;
+        endTurn();
+      }
+    }
+
+    function finish(msg){
+      over=true;
+      overlay(container, msg, 'تكرار المباراة او رجوع', 'مباراة جديدة', ()=>{
+        board=Array(9).fill(null); positions={X:[],O:[]}; turn='X'; phase='place'; selected=null; over=false; render();
+      });
+    }
+
+    render();
+    return ()=>{};
+  }
+
+  /* =========================================================
+     7) BALLOONS — فرقعة البالونات
+  ========================================================= */
+  function initBalloons(container){
+    const {canvas, ctx} = makeCanvas(container);
+    let W,H; function sync(){ W=canvas.W; H=canvas.H; } sync();
+
+    let balloons=[], score=0, lives=3, running=true, timeLeft=45, spawnTimer=0;
+    const colors=['#ff6b6b','#ffd93b','#4ecdc4','#a78bfa','#ff9ff3','#5eead4'];
+
+    function spawn(){
+      balloons.push({x:Math.random()*(W-60)+30, y:H+40, r:26+Math.random()*10, vy:1.2+Math.random()*1.6, color:colors[Math.floor(Math.random()*colors.length)], popped:false, sway:Math.random()*Math.PI*2});
+    }
+
+    function update(dt){
+      spawnTimer-=dt; if(spawnTimer<=0){ spawn(); spawnTimer= Math.max(0.4, 1.1 - timeLeftFactor()); }
+      for(let i=balloons.length-1;i>=0;i--){
+        const b=balloons[i]; b.y-=b.vy; b.sway+=0.04; b.x+=Math.sin(b.sway)*0.6;
+        if(b.y< -60){ balloons.splice(i,1); if(!b.popped){ lives--; sfx('wrong'); if(lives<=0){ return endRound(); } } }
+      }
+      timeLeft-=dt;
+      if(timeLeft<=0) return endRound();
+      setStats('🏆 '+score+' &nbsp; ❤️'.repeat(Math.max(lives,0))+' &nbsp; ⏱ '+Math.ceil(timeLeft));
+    }
+    function timeLeftFactor(){ return Math.min(0.7, (45-timeLeft)/60); }
+
+    function draw(){
+      ctx.clearRect(0,0,W,H);
+      balloons.forEach(b=>{
+        ctx.save(); ctx.translate(b.x,b.y);
+        ctx.fillStyle=b.color;
+        ctx.beginPath(); ctx.ellipse(0,0,b.r*0.8,b.r,0,0,7); ctx.fill();
+        ctx.strokeStyle='rgba(0,0,0,0.2)'; ctx.beginPath(); ctx.moveTo(0,b.r); ctx.lineTo(0,b.r+18); ctx.stroke();
+        ctx.restore();
+      });
+    }
+
+    function popAt(clientX, clientY){
+      const rect=canvas.getBoundingClientRect();
+      const x=clientX-rect.left, y=clientY-rect.top;
+      for(let i=balloons.length-1;i>=0;i--){
+        const b=balloons[i];
+        const dx=x-b.x, dy=y-b.y;
+        if(Math.sqrt(dx*dx+dy*dy) < b.r+8){ balloons.splice(i,1); score+=10; sfx('pop'); break; }
+      }
+    }
+    const onDown=(e)=>{ const p = e.touches? e.touches[0] : e; popAt(p.clientX,p.clientY); };
+    canvas.addEventListener('pointerdown', onDown);
+
+    let raf, last=null;
+    function loop(ts){
+      sync();
+      if(last===null) last=ts;
+      const dt=(ts-last)/1000; last=ts;
+      if(running) update(dt);
+      draw();
+      raf=requestAnimationFrame(loop);
+    }
+
+    function endRound(){
+      if(!running) return;
+      running=false; sfx('gameover');
+      const key='balloons'; if(!bestScores[key]||score>bestScores[key]) bestScores[key]=score;
+      overlay(container,'🎈 خلص الوقت!','نتيجتك: '+score+' | الأفضل: '+bestScores[key],'🔁 حاول مرة ثانية',()=>{ cleanupFn(); cleanupFn=initBalloons(container); }, null, null, {value:score, better:'high'});
+    }
+
+    raf=requestAnimationFrame(loop);
+    return ()=>{ cancelAnimationFrame(raf); canvas.removeEventListener('pointerdown',onDown); destroyCanvas(canvas); };
+  }
+
+  /* =========================================================
+     8) SLIDING PUZZLE — الأحجية المنزلقة
+  ========================================================= */
+  function initSlidePuzzle(container){
+    let tiles = [1,2,3,4,5,6,7,8,null];
+    let moves=0, startTime=Date.now();
+
+    function shuffle(){
+      let empty=8;
+      for(let i=0;i<200;i++){
+        const neighbors=getNeighbors(empty);
+        const swapWith=neighbors[Math.floor(Math.random()*neighbors.length)];
+        [tiles[empty],tiles[swapWith]]=[tiles[swapWith],tiles[empty]];
+        empty=swapWith;
+      }
+    }
+    function getNeighbors(idx){
+      const r=Math.floor(idx/3), c=idx%3, res=[];
+      if(r>0) res.push(idx-3); if(r<2) res.push(idx+3);
+      if(c>0) res.push(idx-1); if(c<2) res.push(idx+1);
+      return res;
+    }
+    shuffle();
+
+    const wrap=document.createElement('div'); wrap.className='domGame';
+    const info=document.createElement('div'); info.style.fontWeight='bold'; info.textContent='رتب الأرقام من 1 إلى 8!';
+    const grid=document.createElement('div'); grid.className='slideGrid';
+    wrap.appendChild(info); wrap.appendChild(grid); container.appendChild(wrap);
+
+    function render(){
+      grid.innerHTML='';
+      tiles.forEach((v,i)=>{
+        const t=document.createElement('div');
+        t.className='slideTile'+(v===null?' empty':'');
+        t.textContent = v===null? '' : v;
+        t.addEventListener('click', ()=>tryMove(i));
+        grid.appendChild(t);
+      });
+      setStats('🔁 '+moves+' حركة');
+    }
+
+    function tryMove(idx){
+      const emptyIdx = tiles.indexOf(null);
+      if(getNeighbors(emptyIdx).includes(idx)){
+        [tiles[emptyIdx],tiles[idx]]=[tiles[idx],tiles[emptyIdx]];
+        moves++; render(); sfx('move');
+        if(tiles.slice(0,8).every((v,i)=>v===i+1)) setTimeout(endRound,200);
+      }
+    }
+
+    function endRound(){
+      sfx('win');
+      const secs = Math.round((Date.now()-startTime)/1000);
+      const key='slide'; if(!bestScores[key]||moves<bestScores[key]) bestScores[key]=moves;
+      overlay(container,'🧩 حليتها!','بـ '+moves+' حركة و'+secs+' ثانية | أفضل: '+bestScores[key]+' حركة','🔁 لغز جديد',()=>{ cleanupFn(); cleanupFn=initSlidePuzzle(container); }, null, null, {value:moves, better:'low'});
+    }
+
+    render();
+    return ()=>{};
+  }
+
+  /* =========================================================
+     9) MULTIPLICATION RACE — سباق الضرب
+  ========================================================= */
+  function initMultiRace(container){
+    let score=0, timeLeft=60, running=true, streak=0, timerId, currentQ;
+    const wrap=document.createElement('div'); wrap.className='domGame';
+    container.appendChild(wrap);
+
+    function rnd(min,max){ return Math.floor(Math.random()*(max-min+1))+min; }
+    function genQ(){
+      const level=Math.min(Math.floor(streak/4),4);
+      const a=rnd(2,4+level*2), b=rnd(2,4+level*2), answer=a*b;
+      const opts=new Set([answer]);
+      while(opts.size<4){ const d=rnd(-6-level*2,6+level*2); if(d!==0 && answer+d>0) opts.add(answer+d); }
+      return {text:`${a} × ${b} = ؟`, answer, options:[...opts].sort(()=>Math.random()-0.5)};
+    }
+
+    function renderQ(){
+      currentQ=genQ();
+      wrap.innerHTML='';
+      const pb=document.createElement('div'); pb.className='problemBox'; pb.textContent=currentQ.text; wrap.appendChild(pb);
+      const og=document.createElement('div'); og.className='optionsGrid';
+      currentQ.options.forEach(opt=>{
+        const b=document.createElement('button'); b.className='optBtn'; b.textContent=opt;
+        b.addEventListener('click', ()=>{
+          if(opt===currentQ.answer){ score+=10; streak++; b.classList.add('correct'); sfx('correct'); }
+          else { streak=0; timeLeft=Math.max(0,timeLeft-3); b.classList.add('wrong'); sfx('wrong'); }
+          setTimeout(renderQ, 260);
+        });
+        og.appendChild(b);
+      });
+      wrap.appendChild(og);
+      setStats('🏆 '+score+' &nbsp; 🔥 '+streak+' &nbsp; ⏱ '+timeLeft);
+    }
+
+    timerId=setInterval(()=>{
+      if(!running) return;
+      timeLeft--; setStats('🏆 '+score+' &nbsp; 🔥 '+streak+' &nbsp; ⏱ '+timeLeft);
+      if(timeLeft<=0){ endRound(); }
+    },1000);
+
+    function endRound(){
+      running=false; clearInterval(timerId); sfx('gameover');
+      const key='multirace'; if(!bestScores[key]||score>bestScores[key]) bestScores[key]=score;
+      overlay(container,'🏁 خلص الوقت!','نتيجتك: '+score+' | الأفضل: '+bestScores[key],'🔁 حاول مرة ثانية',()=>{ cleanupFn(); cleanupFn=initMultiRace(container); }, null, null, {value:score, better:'high'});
+    }
+
+    renderQ();
+    return ()=>{ clearInterval(timerId); };
+  }
+
+  /* =========================================================
+     10) NUMBER GUESS — خمن الرقم
+  ========================================================= */
+  function initGuess(container){
+    // لعبة "خمن رقم صاحبك" — لاعبين بالتناوب:
+    // اللاعب الأول يخبي رقم من 1-100 عن طريق لوحة مفاتيح، واللاعب الثاني يخمنه.
+    // بعدين ينعكس الدور (اللاعب الثاني يخبي، اللاعب الأول يخمن)، وبالآخر يفوز مين خمن بمحاولات أقل.
+    const wrap=document.createElement('div'); wrap.className='domGame';
+    container.appendChild(wrap);
+
+    let round, setterInput, secret, guessInput, attempts, results;
+
+    function setterName(r){ return r===1 ? 'الأول' : 'الثاني'; }
+    function guesserName(r){ return r===1 ? 'الثاني' : 'الأول'; }
+
+    // لوحة مفاتيح رقمية مرتبة من 0-9
+    function keypad(onDigit, onDel, onConfirm, confirmLabel){
+      const kp=document.createElement('div'); kp.className='numKeypad';
+      for(let d=1; d<=9; d++){
+        const k=document.createElement('button'); k.className='numKey'; k.textContent=d;
+        k.addEventListener('click', ()=>onDigit(d));
+        kp.appendChild(k);
+      }
+      const del=document.createElement('button'); del.className='numKey del'; del.textContent='⌫';
+      del.addEventListener('click', onDel);
+      const zero=document.createElement('button'); zero.className='numKey'; zero.textContent='0';
+      zero.addEventListener('click', ()=>onDigit(0));
+      const conf=document.createElement('button'); conf.className='numKey confirm'; conf.textContent=confirmLabel||'✔️';
+      conf.addEventListener('click', onConfirm);
+      kp.appendChild(del); kp.appendChild(zero); kp.appendChild(conf);
+      return {el:kp, confirmBtn:conf};
+    }
+
+    function showIntro(){
+      wrap.innerHTML=''; setStats('');
+      const box=document.createElement('div'); box.style.textAlign='center';
+      box.innerHTML = `<div style="font-size:22px;font-weight:bold;margin-bottom:10px">🕵️ خمن رقم صاحبك</div>
+        <div style="font-size:14px;opacity:.85;max-width:320px;margin:0 auto 18px;line-height:1.6">اللاعب الأول يفكر برقم من 1 إلى 100 ويدخله بلوحة المفاتيح 🔢<br>واللاعب الثاني يحاول يخمنه بأقل محاولات.<br>وبعدين ينعكس الدور!</div>`;
+      const b=document.createElement('button'); b.className='actionBtn'; b.textContent='▶️ ابدأ اللعب';
+      b.addEventListener('click', ()=>{ sfx('click'); results=[null,null]; startRound(1); });
+      box.appendChild(b);
+      wrap.appendChild(box);
+    }
+
+    function startRound(r){
+      round=r; setterInput=''; secret=null; guessInput=''; attempts=0;
+      showEnterSecret();
+    }
+
+    function showEnterSecret(){
+      wrap.innerHTML='';
+      const info=document.createElement('div'); info.style.fontWeight='bold'; info.style.textAlign='center';
+      info.innerHTML = '🙈 دور اللاعب '+setterName(round)+'<br><span style="font-size:13px;font-weight:normal;opacity:.85">فكر برقم من 1 إلى 100 ودخله (اللاعب '+guesserName(round)+' يغمض عينه!)</span>';
+      wrap.appendChild(info);
+
+      const disp=document.createElement('div'); disp.className='secretDisplay';
+      wrap.appendChild(disp);
+      const update=()=>{ disp.textContent = setterInput ? '●'.repeat(setterInput.length) : '—'; };
+      update();
+
+      const isValid=()=>{ const n=parseInt(setterInput||'0',10); return n>=1 && n<=100; };
+      const refreshConfirm=()=>{
+        if(isValid()){ kp.confirmBtn.style.opacity='1'; kp.confirmBtn.style.pointerEvents='auto'; }
+        else { kp.confirmBtn.style.opacity='0.4'; kp.confirmBtn.style.pointerEvents='none'; }
+      };
+
+      const kp = keypad(
+        (d)=>{ const next=setterInput+d; if(next.length<=3 && parseInt(next,10)<=100){ setterInput=next; update(); refreshConfirm(); sfx('click'); } },
+        ()=>{ setterInput=setterInput.slice(0,-1); update(); refreshConfirm(); sfx('click'); },
+        ()=>{ if(!isValid()) return; secret=parseInt(setterInput,10); sfx('win'); showPassDevice(); },
+        '✔️ تأكيد'
+      );
+      wrap.appendChild(kp.el);
+      refreshConfirm();
+      setStats('🔒 اللاعب '+setterName(round)+' يدخل رقم السر');
+    }
+
+    function showPassDevice(){
+      wrap.innerHTML='';
+      const box=document.createElement('div'); box.style.textAlign='center';
+      box.innerHTML = `<div style="font-size:40px;margin-bottom:10px">📱➡️</div>
+        <div style="font-weight:bold;font-size:18px;margin-bottom:8px">مرر الجهاز للاعب ${guesserName(round)}</div>
+        <div style="opacity:.85;font-size:14px">اللاعب ${setterName(round)} خبّى رقم السر، هسه دور اللاعب ${guesserName(round)} يخمنه!</div>`;
+      const b=document.createElement('button'); b.className='actionBtn'; b.textContent='▶️ جاهز، خمّن!';
+      b.style.marginTop='16px';
+      b.addEventListener('click', ()=>{ sfx('click'); showGuessing(); });
+      box.appendChild(document.createElement('br'));
+      box.appendChild(b);
+      wrap.appendChild(box);
+      setStats('');
+    }
+
+    function showGuessing(){
+      wrap.innerHTML='';
+      guessInput='';
+      const info=document.createElement('div'); info.style.fontWeight='bold'; info.style.textAlign='center';
+      info.textContent = '🎯 دور اللاعب '+guesserName(round)+' — خمن الرقم من 1 إلى 100';
+      wrap.appendChild(info);
+
+      const disp=document.createElement('div'); disp.className='secretDisplay';
+      wrap.appendChild(disp);
+      const update=()=>{ disp.textContent = guessInput || '—'; };
+      update();
+
+      const fb=document.createElement('div'); fb.className='feedbackText';
+      wrap.appendChild(fb);
+
+      const isValid=()=>{ const n=parseInt(guessInput||'0',10); return n>=1 && n<=100; };
+      const refreshConfirm=()=>{
+        if(isValid()){ kp.confirmBtn.style.opacity='1'; kp.confirmBtn.style.pointerEvents='auto'; }
+        else { kp.confirmBtn.style.opacity='0.4'; kp.confirmBtn.style.pointerEvents='none'; }
+      };
+
+      const kp = keypad(
+        (d)=>{ const next=guessInput+d; if(next.length<=3 && parseInt(next,10)<=100){ guessInput=next; update(); refreshConfirm(); sfx('click'); } },
+        ()=>{ guessInput=guessInput.slice(0,-1); update(); refreshConfirm(); sfx('click'); },
+        onSubmitGuess,
+        '✔️ خمّن'
+      );
+      wrap.appendChild(kp.el);
+      refreshConfirm();
+      setStats('🎯 محاولات: '+attempts);
+
+      function onSubmitGuess(){
+        if(!isValid()) return;
+        const g = parseInt(guessInput,10);
+        attempts++;
+        if(g===secret){
+          sfx('win');
+          results[round-1]=attempts;
+          setTimeout(showRoundResult, 250);
+          return;
+        } else if(g<secret){
+          fb.textContent='⬆️ الرقم أكبر من كذا!'; fb.style.color='#ffd93b'; sfx('tickHigh');
+        } else {
+          fb.textContent='⬇️ الرقم أوطى من كذا!'; fb.style.color='#ff6b6b'; sfx('tickLow');
+        }
+        guessInput=''; update(); refreshConfirm();
+        setStats('🎯 محاولات: '+attempts);
+      }
+    }
+
+    function showRoundResult(){
+      wrap.innerHTML='';
+      const box=document.createElement('div'); box.style.textAlign='center';
+      box.innerHTML = `<div style="font-size:40px;margin-bottom:8px">🎉</div>
+        <div style="font-weight:bold;font-size:18px;margin-bottom:6px">صح! اللاعب ${guesserName(round)} عرف الرقم ${secret}</div>
+        <div style="opacity:.85">بـ ${attempts} محاولة</div>`;
+      const b=document.createElement('button'); b.className='actionBtn';
+      b.textContent = round===1 ? '▶️ دور اللاعب الثاني يخبي رقم' : '🏁 شوف النتيجة النهائية';
+      b.style.marginTop='16px';
+      b.addEventListener('click', ()=>{
+        sfx('click');
+        if(round===1) startRound(2);
+        else showFinal();
+      });
+      box.appendChild(document.createElement('br'));
+      box.appendChild(b);
+      wrap.appendChild(box);
+      setStats('');
+    }
+
+    function showFinal(){
+      wrap.innerHTML='';
+      const attemptsP2Guessing = results[0]; // محاولات اللاعب الثاني وهو يخمن رقم اللاعب الأول
+      const attemptsP1Guessing = results[1]; // محاولات اللاعب الأول وهو يخمن رقم اللاعب الثاني
+      let msg;
+      if(attemptsP1Guessing<attemptsP2Guessing) msg='🏆 فاز اللاعب الأول! خمن بمحاولات أقل';
+      else if(attemptsP2Guessing<attemptsP1Guessing) msg='🏆 فاز اللاعب الثاني! خمن بمحاولات أقل';
+      else msg='🤝 تعادل! نفس عدد المحاولات';
+
+      const box=document.createElement('div'); box.style.textAlign='center';
+      box.innerHTML = `<div style="font-size:40px;margin-bottom:8px">🏁</div>
+        <div style="font-weight:bold;font-size:19px;margin-bottom:12px">${msg}</div>
+        <div style="display:flex;gap:10px;justify-content:center;margin-bottom:6px">
+          <div style="background:rgba(78,205,196,0.18);border:2px solid #4ecdc4;border-radius:14px;padding:10px 16px">
+            <div style="font-size:12px;opacity:.85">🅰️ اللاعب الأول</div>
+            <div style="font-size:22px;font-weight:900;color:#4ecdc4">${attemptsP1Guessing} محاولة</div>
+          </div>
+          <div style="background:rgba(255,107,107,0.18);border:2px solid #ff6b6b;border-radius:14px;padding:10px 16px">
+            <div style="font-size:12px;opacity:.85">🅱️ اللاعب الثاني</div>
+            <div style="font-size:22px;font-weight:900;color:#ff6b6b">${attemptsP2Guessing} محاولة</div>
+          </div>
+        </div>`;
+      const b1=document.createElement('button'); b1.className='actionBtn'; b1.textContent='🔁 مباراة جديدة';
+      b1.style.marginTop='14px';
+      b1.addEventListener('click', ()=>{ sfx('click'); results=[null,null]; startRound(1); });
+      const b2=document.createElement('button'); b2.className='actionBtn secondary'; b2.textContent='🏠 القائمة';
+      b2.addEventListener('click', ()=>{ sfx('click'); backBtn.click(); });
+      box.appendChild(document.createElement('br'));
+      box.appendChild(b1); box.appendChild(b2);
+      wrap.appendChild(box);
+      setStats('');
+    }
+
+    showIntro();
+    return ()=>{};
+  }
+
+  /* =========================================================
+     PENALTY — ركلات الترجيح (محلي / ضد الجهاز / أونلاين)
+  ========================================================= */
+  const TEAMS = [
+    { id:'barca', name:'برشلونة', emoji:'🔵🔴', star:'لامين يامال' },
+    { id:'real', name:'ريال مدريد', emoji:'⚪', star:'كيليان مبابي' },
+    { id:'city', name:'مانشستر سيتي', emoji:'🩵', star:'إيرلينغ هالاند' },
+    { id:'liv', name:'ليفربول', emoji:'🔴', star:'محمد صلاح' },
+    { id:'psg', name:'باريس سان جيرمان', emoji:'🔵🔴', star:'عثمان ديمبيلي' },
+    { id:'bayern', name:'بايرن ميونخ', emoji:'🔴⚪', star:'هاري كين' },
+    { id:'spain', name:'إسبانيا', emoji:'🇪🇸', star:'لامين يامال' },
+    { id:'france', name:'فرنسا', emoji:'🇫🇷', star:'كيليان مبابي' },
+    { id:'argentina', name:'الأرجنتين', emoji:'🇦🇷', star:'ليونيل ميسي' },
+    { id:'brazil', name:'البرازيل', emoji:'🇧🇷', star:'فينيسيوس جونيور' },
+    { id:'england', name:'إنجلترا', emoji:'🏴', star:'جود بيلينغهام' },
+    { id:'portugal', name:'البرتغال', emoji:'🇵🇹', star:'كريستيانو رونالدو' },
+  ];
+
+  function pkComputeOutcome(shot, dive){
+    if(shot.wide) return { scored:false, reason:'wide' };
+    if(shot.chip){
+      if(dive==='mid') return { scored: Math.random()>=0.72, reason: Math.random()>=0.72?'goal':'save' };
+      return { scored:true, reason:'goal' };
+    }
+    const zone = shot.tx<0.38 ? 'left' : (shot.tx>0.62 ? 'right' : 'mid');
+    const corner = shot.ty>0.72;
+    let saveChance;
+    if(dive===zone) saveChance = 0.62 - shot.power*0.32 - (corner?0.22:0) - (zone==='mid'?0.1:0);
+    else if(dive==='mid') saveChance = 0.12 - shot.power*0.08;
+    else saveChance = 0.05;
+    saveChance = Math.max(0.03, Math.min(0.9, saveChance));
+    const scored = Math.random() >= saveChance;
+    return { scored, reason: scored?'goal':'save' };
+  }
+
+  function pkAiShot(){
+    return {
+      tx: Math.random(),
+      ty: 0.3 + Math.random()*0.65,
+      power: 0.5 + Math.random()*0.5,
+      chip: Math.random()<0.08,
+      wide: Math.random()<0.06
+    };
+  }
+  function pkAiDive(){
+    const r = Math.random();
+    return r<0.38 ? 'left' : (r<0.76 ? 'right' : 'mid');
+  }
+
+  function initPenalty(container, statsEl){
+    statsEl.textContent = '';
+    let destroyed=false;
+    let peer=null, conn=null;
+    let mode=null;        // 'ai' | 'local' | 'online'
+    let isHost=false;
+    let teamA=null, teamB=null;
+    let labelA='', labelB='';
+    let kickIndex=0, scoreA=0, scoreB=0, attemptsA=0, attemptsB=0, dotsA=[], dotsB=[];
+    let matchOver=false;
+    let controlScheme='swipe';
+    let dialPick=null, chipOn=false;
+    const pendingResolvers = { shot:null, dive:null };
+
+    function clear(){ container.innerHTML=''; }
+
+    showModeSelect();
+
+    function showModeSelect(){
+      clear();
+      const wrap=document.createElement('div'); wrap.className='pkMenu';
+      wrap.innerHTML = '<h2>🥅 ركلات الترجيح</h2><p class="pkSub">اختر فريقك وسدد أو صد الكرة! العب لحالك، مع صديق بنفس الجهاز، أو أونلاين مع صديق بجهاز ثاني.</p>';
+      const opts=[
+        { icon:'🤖', title:'ضد الجهاز', sub:'تختار فريقك وتلعب لحالك', on:()=>{
+            mode='ai'; showTeamSelect('A', ()=>{ teamB=randomTeam(teamA); labelA='أنت'; labelB='🤖 الجهاز'; buildStage(); setTimeout(runTurn,500); });
+        }},
+        { icon:'👥', title:'لاعبين بالتناوب', sub:'نفس الجهاز، كل وحد ياخذ دوره', on:()=>{
+            mode='local'; showTeamSelect('A', ()=>{ showTeamSelect('B', ()=>{ labelA='اللاعب الأول'; labelB='اللاعب الثاني'; buildStage(); setTimeout(runTurn,500); }); });
+        }},
+        { icon:'🌐', title:'أونلاين', sub:'مع صديق بجهاز ثاني، بغرفة خاصة', on:()=> showOnlineChoice() },
+      ];
+      opts.forEach(o=>{
+        const b=document.createElement('button'); b.className='pkModeBtn';
+        b.innerHTML = '<span class="pkModeIcon">'+o.icon+'</span><span><b>'+o.title+'</b><small>'+o.sub+'</small></span>';
+        b.addEventListener('click', ()=>{ sfx('click'); o.on(); });
+        wrap.appendChild(b);
+      });
+      container.appendChild(wrap);
+    }
+
+    function randomTeam(exclude){ const pool=TEAMS.filter(t=>t!==exclude); return pool[Math.floor(Math.random()*pool.length)]; }
+
+    function showTeamSelect(which, cb){
+      clear();
+      const wrap=document.createElement('div'); wrap.className='pkMenu';
+      const title = mode==='local' ? (which==='A' ? '🅰️ اختر فريق اللاعب الأول' : '🅱️ اختر فريق اللاعب الثاني') : '⚽ اختر فريقك';
+      wrap.innerHTML = '<h2>'+title+'</h2>';
+      const grid=document.createElement('div'); grid.className='teamGrid';
+      TEAMS.forEach(t=>{
+        const c=document.createElement('div'); c.className='teamCard';
+        c.innerHTML = '<span class="tFlag">'+t.emoji+'</span><span class="tName">'+t.name+'</span><span class="tStar">⭐ '+t.star+'</span>';
+        c.addEventListener('click', ()=>{ sfx('click'); if(which==='A') teamA=t; else teamB=t; cb(); });
+        grid.appendChild(c);
+      });
+      wrap.appendChild(grid);
+      container.appendChild(wrap);
+    }
+
+    /* ---------- online room setup ---------- */
+    function showOnlineChoice(){
+      clear();
+      const wrap=document.createElement('div'); wrap.className='pkMenu';
+      wrap.innerHTML = '<h2>🌐 اللعب أونلاين</h2><p class="pkSub">تحتاج اتصال إنترنت بكل جهاز. أنشئ غرفة وشارك الكود مع صديقك، أو ادخل الكود اللي عطاك ياه.</p>';
+      const b1=document.createElement('button'); b1.className='pkModeBtn'; b1.innerHTML='<span class="pkModeIcon">🆕</span><span><b>إنشاء غرفة</b><small>سوّي غرفة وشارك الكود</small></span>';
+      const b2=document.createElement('button'); b2.className='pkModeBtn'; b2.innerHTML='<span class="pkModeIcon">🔑</span><span><b>دخول لغرفة</b><small>عندك كود من صديقك</small></span>';
+      const b3=document.createElement('button'); b3.className='pkModeBtn'; b3.innerHTML='<span class="pkModeIcon">⬅️</span><span><b>رجوع</b></span>';
+      b1.addEventListener('click', ()=>{ sfx('click'); mode='online'; isHost=true; hostCreateRoom(); });
+      b2.addEventListener('click', ()=>{ sfx('click'); mode='online'; isHost=false; guestJoinScreen(); });
+      b3.addEventListener('click', ()=>{ sfx('click'); showModeSelect(); });
+      wrap.appendChild(b1); wrap.appendChild(b2); wrap.appendChild(b3);
+      container.appendChild(wrap);
+    }
+
+    function loadPeerJs(){
+      return new Promise((resolve, reject)=>{
+        if(window.Peer){ resolve(); return; }
+        const s=document.createElement('script');
+        s.src='https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js';
+        s.onload=()=>resolve();
+        s.onerror=()=>reject(new Error('load-fail'));
+        document.head.appendChild(s);
+      });
+    }
+
+    function hostCreateRoom(){
+      clear();
+      const wrap=document.createElement('div'); wrap.className='pkMenu';
+      wrap.innerHTML = '<h2>🆕 جاري تجهيز الغرفة...</h2><p class="pkSub">لحظات...</p>';
+      container.appendChild(wrap);
+      loadPeerJs().then(tryOpen).catch(()=> showOnlineError('تعذر تحميل خدمة الاتصال، تأكد من الإنترنت وحاول مرة ثانية.'));
+
+      function tryOpen(){ attemptOpen(0); }
+      function attemptOpen(attempt){
+        const code = String(Math.floor(1000 + Math.random()*9000));
+        const p = new Peer('pk'+code, { debug:0 });
+        p.on('open', ()=>{
+          peer=p;
+          clear();
+          const w=document.createElement('div'); w.className='pkMenu';
+          w.innerHTML = '<h2>🆕 غرفتك جاهزة</h2><p class="pkSub">أعطِ هذا الكود لصديقك يدخله بجهازه</p><div class="roomCodeBox">'+code+'</div><p class="pkSub">⏳ بانتظار انضمام صديقك...</p>';
+          const backBtnEl=document.createElement('button'); backBtnEl.className='actionBtn secondary'; backBtnEl.textContent='⬅️ رجوع';
+          backBtnEl.addEventListener('click', ()=>{ if(peer){ try{peer.destroy();}catch(e){} } peer=null; showModeSelect(); });
+          w.appendChild(backBtnEl);
+          container.appendChild(w);
+        });
+        p.on('connection', c=>{ conn=c; setupConnHandlers(true); });
+        p.on('error', err=>{
+          if(attempt<3 && String(err).indexOf('unavailable-id')!==-1){ attemptOpen(attempt+1); }
+          else showOnlineError('صار خطأ بالاتصال. جرب مرة ثانية.');
+        });
+      }
+    }
+
+    function guestJoinScreen(){
+      clear();
+      const wrap=document.createElement('div'); wrap.className='pkMenu';
+      wrap.innerHTML = '<h2>🔑 دخول لغرفة</h2><p class="pkSub">اكتب كود الغرفة اللي أعطاك ياه صديقك</p>';
+      const inp=document.createElement('input'); inp.className='roomInput'; inp.maxLength=4; inp.inputMode='numeric'; inp.placeholder='0000';
+      const btn=document.createElement('button'); btn.className='actionBtn'; btn.textContent='🚪 دخول'; btn.style.marginTop='14px';
+      btn.addEventListener('click', ()=>{
+        const code = inp.value.trim();
+        if(code.length!==4) return;
+        sfx('click'); joinRoom(code);
+      });
+      wrap.appendChild(inp); wrap.appendChild(document.createElement('br')); wrap.appendChild(btn);
+      container.appendChild(wrap);
+    }
+
+    function joinRoom(code){
+      clear();
+      const w=document.createElement('div'); w.className='pkMenu';
+      w.innerHTML = '<h2>🔄 جاري الاتصال...</h2>';
+      container.appendChild(w);
+      loadPeerJs().then(()=>{
+        const p = new Peer();
+        p.on('open', ()=>{
+          peer=p;
+          const c = p.connect('pk'+code, { reliable:true });
+          conn=c;
+          conn.on('open', ()=> setupConnHandlers(false));
+          conn.on('error', ()=> showOnlineError('تعذر الاتصال بالغرفة. تأكد من الكود.'));
+        });
+        p.on('error', ()=> showOnlineError('تعذر الاتصال بالغرفة. تأكد من الكود.'));
+      }).catch(()=> showOnlineError('تعذر تحميل خدمة الاتصال، تأكد من الإنترنت.'));
+    }
+
+    function showOnlineError(msg){
+      clear();
+      const w=document.createElement('div'); w.className='pkMenu';
+      w.innerHTML = '<h2>⚠️ حدث خطأ</h2><p class="pkSub">'+msg+'</p>';
+      const b=document.createElement('button'); b.className='actionBtn'; b.textContent='⬅️ رجوع';
+      b.addEventListener('click', ()=>{ if(peer){ try{peer.destroy();}catch(e){} } peer=null; conn=null; showModeSelect(); });
+      w.appendChild(b);
+      container.appendChild(w);
+    }
+
+    function setupConnHandlers(hostSide){
+      conn.on('data', data=> handleMessage(data));
+      conn.on('close', ()=>{ if(!matchOver && !destroyed) showOnlineError('انقطع الاتصال بصديقك.'); });
+      if(hostSide){
+        showTeamSelect('A', ()=>{
+          clear();
+          const w=document.createElement('div'); w.className='pkMenu';
+          w.innerHTML = '<h2>⏳ بانتظار صديقك...</h2><p class="pkSub">اخترت '+teamA.name+'. صديقك لسا يختار فريقه</p>';
+          container.appendChild(w);
+        });
+      } else {
+        clear();
+        const w=document.createElement('div'); w.className='pkMenu';
+        w.innerHTML = '<h2>✅ اتصلت بالغرفة</h2><p class="pkSub">اختر فريقك</p>';
+        container.appendChild(w);
+        showTeamSelectGuest();
+      }
+    }
+
+    function showTeamSelectGuest(){
+      const wrap=document.createElement('div'); wrap.className='pkMenu';
+      const grid=document.createElement('div'); grid.className='teamGrid';
+      TEAMS.forEach(t=>{
+        const c=document.createElement('div'); c.className='teamCard';
+        c.innerHTML = '<span class="tFlag">'+t.emoji+'</span><span class="tName">'+t.name+'</span><span class="tStar">⭐ '+t.star+'</span>';
+        c.addEventListener('click', ()=>{
+          sfx('click'); teamB=t;
+          send({ type:'ready', team:t });
+          clear();
+          const w=document.createElement('div'); w.className='pkMenu';
+          w.innerHTML = '<h2>⏳ بانتظار المضيف...</h2><p class="pkSub">اخترت '+t.name+'</p>';
+          container.appendChild(w);
+        });
+        grid.appendChild(c);
+      });
+      wrap.appendChild(grid);
+      container.appendChild(wrap);
+    }
+
+    function send(msg){ if(conn && conn.open){ try{ conn.send(msg); }catch(e){} } }
+
+    function handleMessage(msg){
+      if(!msg || !msg.type) return;
+      if(isHost){
+        if(msg.type==='ready'){
+          teamB = msg.team;
+          labelA = teamA.name; labelB = teamB.name;
+          send({ type:'start', teamA, teamB });
+          buildStage();
+          setTimeout(runTurn, 600);
+        } else if(msg.type==='shotInput'){
+          if(pendingResolvers.shot){ const f=pendingResolvers.shot; pendingResolvers.shot=null; f(msg.shot); }
+        } else if(msg.type==='diveInput'){
+          if(pendingResolvers.dive){ const f=pendingResolvers.dive; pendingResolvers.dive=null; f(msg.dive); }
+        }
+      } else {
+        if(msg.type==='start'){
+          teamA=msg.teamA; teamB=msg.teamB; labelA=teamA.name; labelB=teamB.name;
+          buildStage();
+        } else if(msg.type==='yourTurnKick'){
+          showKickerUI('أنت', shot=> send({ type:'shotInput', shot }));
+        } else if(msg.type==='yourTurnDefend'){
+          showDefendUI('أنت', dive=> send({ type:'diveInput', dive }));
+        } else if(msg.type==='kickResult'){
+          scoreA=msg.scoreA; scoreB=msg.scoreB; attemptsA=msg.attemptsA; attemptsB=msg.attemptsB; dotsA=msg.dotsA; dotsB=msg.dotsB;
+          updateHud();
+          animateAndShow(msg.shot, msg.dive, msg.scored, msg.kSide, ()=>{});
+        } else if(msg.type==='matchOver'){
+          scoreA=msg.scoreA; scoreB=msg.scoreB; matchOver=true;
+          setTimeout(()=> showFinal(msg.winner), 700);
+        }
+      }
+    }
+
+    /* ---------- match stage ---------- */
+    function buildStage(){
+      clear();
+      const wrap=document.createElement('div'); wrap.className='pkWrap';
+      const hud=document.createElement('div'); hud.className='pkHud'; hud.id='pkHud';
+      wrap.appendChild(hud);
+      const stage=document.createElement('div'); stage.className='pkStage'; stage.id='pkStage';
+      stage.innerHTML =
+        '<div class="pkField"></div>'+
+        '<div class="pkGoal"></div>'+
+        '<div class="pkSpotHint"></div>'+
+        '<div class="pkKeeper" id="pkKeeper">🧤</div>'+
+        '<div class="pkBall" id="pkBall">⚽</div>'+
+        '<div class="pkBanner" id="pkBanner"></div>'+
+        '<div class="pkTimerWrap" id="pkTimerWrap" style="display:none"><div class="pkTimerBar" id="pkTimerBar"></div></div>';
+      wrap.appendChild(stage);
+      container.appendChild(wrap);
+      kickIndex=0; scoreA=0; scoreB=0; attemptsA=0; attemptsB=0; dotsA=[]; dotsB=[]; matchOver=false;
+      updateHud();
+    }
+
+    function updateHud(){
+      const hud=document.getElementById('pkHud'); if(!hud) return;
+      function dotsHtml(arr){
+        let h=''; for(let i=0;i<5;i++){ const d=arr[i]; h+='<span class="pkDot '+(d==='goal'?'goal':(d==='miss'?'miss':''))+'"></span>'; }
+        return h;
+      }
+      hud.innerHTML =
+        '<div class="pkHudSide"><div class="pkTeamLbl">'+teamA.emoji+' '+labelA+'</div><div class="pkDots">'+dotsHtml(dotsA)+'</div><div style="font-weight:900">'+scoreA+'</div></div>'+
+        '<div class="pkVs">VS</div>'+
+        '<div class="pkHudSide"><div class="pkTeamLbl">'+teamB.emoji+' '+labelB+'</div><div class="pkDots">'+dotsHtml(dotsB)+'</div><div style="font-weight:900">'+scoreB+'</div></div>';
+    }
+
+    function setBanner(text, color){ const b=document.getElementById('pkBanner'); if(b){ b.textContent=text; b.style.color=color||'#ffd93b'; } }
+    function clearControlZone(){
+      const stage=document.getElementById('pkStage'); if(!stage) return;
+      stage.querySelectorAll('.pkTouchPad,.pkCtrlRow,.pkDiveRow').forEach(el=>el.remove());
+    }
+    function resetBallKeeper(){
+      const ball=document.getElementById('pkBall'), keeper=document.getElementById('pkKeeper');
+      if(ball){ ball.style.left='50%'; ball.style.bottom='14%'; ball.style.transform='translate(-50%,0) scale(1)'; }
+      if(keeper){ keeper.style.left='50%'; keeper.style.transform='translate(-50%,0)'; }
+    }
+
+    function showKickerUI(labelText, onShot){
+      if(destroyed) return;
+      clearControlZone();
+      setBanner('🎯 دور '+labelText+' — سدد!', '#4ade80');
+      resetBallKeeper();
+      buildShootControls(onShot);
+    }
+
+    function buildShootControls(onShot){
+      const stage=document.getElementById('pkStage'); if(!stage) return;
+      const pad=document.createElement('div'); pad.className='pkTouchPad';
+      const ctrlRow=document.createElement('div'); ctrlRow.className='pkCtrlRow';
+      let used=false, dragging=false, sx=0, sy=0, st=0;
+      function finish(shot){ if(used) return; used=true; pad.remove(); ctrlRow.remove(); onShot(shot); }
+
+      pad.addEventListener('pointerdown', e=>{ dragging=true; sx=e.clientX; sy=e.clientY; st=performance.now(); try{ pad.setPointerCapture(e.pointerId); }catch(err){} });
+      pad.addEventListener('pointerup', e=>{
+        if(!dragging) return; dragging=false;
+        const dx=e.clientX-sx, dyF=sy-e.clientY, dt=Math.max(16, performance.now()-st);
+        if(dyF<15) return;
+        const dist=Math.hypot(dx,dyF), speed=dist/dt;
+        let tx=0.5+dx/140, ty=Math.min(1, dyF/160);
+        const power=Math.max(0.15, Math.min(1, speed/0.9));
+        const chip = speed<0.15 && dyF<95 && dyF>20 && Math.abs(dx)<40;
+        const wide = tx<-0.06 || tx>1.06;
+        tx=Math.max(-0.12, Math.min(1.12, tx));
+        sfx('click');
+        finish({ tx, ty, power, chip, wide });
+      });
+      stage.appendChild(pad);
+
+      const switchBtn=document.createElement('button'); switchBtn.className='pkSwitchBtn';
+      switchBtn.textContent = controlScheme==='swipe' ? '🕹️ استخدم دائرة الاتجاهات' : '👆 استخدم السحب باللمس';
+      switchBtn.addEventListener('click', ()=>{ controlScheme = controlScheme==='swipe' ? 'dial' : 'swipe'; pad.remove(); ctrlRow.remove(); buildShootControls(onShot); });
+      ctrlRow.appendChild(switchBtn);
+
+      if(controlScheme==='dial'){
+        pad.style.pointerEvents='none';
+        dialPick=null; chipOn=false;
+        const dial=document.createElement('div'); dial.className='pkDial';
+        const cells=[
+          {x:0,y:0,tx:0.15,ty:0.85,icon:'↖️'},{x:52,y:0,tx:0.5,ty:0.9,icon:'⬆️'},{x:104,y:0,tx:0.85,ty:0.85,icon:'↗️'},
+          {x:0,y:52,tx:0.15,ty:0.25,icon:'↙️'},{x:52,y:52,tx:0.5,ty:0.3,icon:'⬇️'},{x:104,y:52,tx:0.85,ty:0.25,icon:'↘️'}
+        ];
+        cells.forEach(c=>{
+          const cell=document.createElement('div'); cell.className='pkDialCell'; cell.style.left=c.x+'px'; cell.style.top=c.y+'px'; cell.textContent=c.icon;
+          cell.addEventListener('click', ()=>{
+            dial.querySelectorAll('.pkDialCell').forEach(x=>x.classList.remove('picked'));
+            cell.classList.add('picked'); dialPick={ tx:c.tx, ty:c.ty };
+          });
+          dial.appendChild(cell);
+        });
+        ctrlRow.appendChild(dial);
+        const chipBtn=document.createElement('button'); chipBtn.className='pkChipToggle'; chipBtn.textContent='🪁 بانينكا';
+        chipBtn.addEventListener('click', ()=>{ chipOn=!chipOn; chipBtn.classList.toggle('on', chipOn); });
+        ctrlRow.appendChild(chipBtn);
+        let holding=false, holdStart=0;
+        const shootBtn=document.createElement('button'); shootBtn.className='pkShootBtn'; shootBtn.textContent='🔫 اضغط مطول للتسديد';
+        shootBtn.addEventListener('pointerdown', ()=>{ holding=true; holdStart=performance.now(); });
+        const release=()=>{
+          if(!holding) return; holding=false;
+          const dur=performance.now()-holdStart;
+          const power=Math.max(0.2, Math.min(1, dur/900));
+          const pick = dialPick || { tx:0.5, ty:0.5 };
+          sfx('click');
+          finish({ tx:pick.tx, ty: chipOn?0.5:pick.ty, power: chipOn?0.35:power, chip: chipOn, wide:false });
+        };
+        shootBtn.addEventListener('pointerup', release);
+        shootBtn.addEventListener('pointerleave', ()=>{ holding=false; });
+        ctrlRow.appendChild(shootBtn);
+      } else {
+        const hint=document.createElement('div');
+        hint.style.cssText='color:#fff;opacity:.9;font-size:12px;text-align:center;max-width:260px;background:rgba(0,0,0,0.4);padding:6px 12px;border-radius:12px;';
+        hint.textContent='اسحب إصبعك من عند الكرة للأعلى باتجاه المرمى — سرعة السحب = قوة التسديدة، اسحب بخفة وبثبات لعمل بانينكا 🪁';
+        ctrlRow.appendChild(hint);
+      }
+      stage.appendChild(ctrlRow);
+    }
+
+    function showDefendUI(labelText, onDive){
+      if(destroyed) return;
+      clearControlZone();
+      setBanner('🧤 دور '+labelText+' — صد الكرة!', '#f87171');
+      resetBallKeeper();
+      const stage=document.getElementById('pkStage'); if(!stage) return;
+      const timerWrap=document.getElementById('pkTimerWrap'), timerBar=document.getElementById('pkTimerBar');
+      timerWrap.style.display='block'; timerBar.style.transition='none'; timerBar.style.width='100%';
+      requestAnimationFrame(()=>{ timerBar.style.transition='width 1.8s linear'; timerBar.style.width='0%'; });
+      const row=document.createElement('div'); row.className='pkDiveRow';
+      let done=false;
+      function finish(dive){ if(done) return; done=true; clearTimeout(autoT); timerWrap.style.display='none'; row.remove(); onDive(dive); }
+      [{d:'left',icon:'⬅️'},{d:'mid',icon:'🧤'},{d:'right',icon:'➡️'}].forEach(o=>{
+        const b=document.createElement('button'); b.className='pkDiveBtn'; b.textContent=o.icon;
+        b.addEventListener('click', ()=>{ sfx('click'); finish(o.d); });
+        row.appendChild(b);
+      });
+      stage.appendChild(row);
+      const autoT=setTimeout(()=> finish('mid'), 1850);
+    }
+
+    function showPassDevice(lbl, kind, next){
+      clearControlZone();
+      setBanner('', '#fff');
+      const stage=document.getElementById('pkStage'); if(!stage) return;
+      const row=document.createElement('div'); row.className='pkCtrlRow';
+      const box=document.createElement('div'); box.style.cssText='background:rgba(0,0,0,0.55);padding:16px 20px;border-radius:16px;text-align:center;';
+      box.innerHTML = '<div style="font-size:15px;margin-bottom:10px">🔄 مرر الجهاز... دور <b>'+lbl+'</b> '+(kind==='shot'?'للتسديد ⚽':'للصد 🧤')+'</div>';
+      const b=document.createElement('button'); b.className='actionBtn'; b.textContent='✅ جاهز';
+      b.addEventListener('click', ()=>{ sfx('click'); row.remove(); next(); });
+      box.appendChild(b); row.appendChild(box);
+      stage.appendChild(row);
+    }
+
+    function animateAndShow(shot, dive, scored, kSide, cb){
+      if(destroyed) return;
+      clearControlZone();
+      const ball=document.getElementById('pkBall'), keeper=document.getElementById('pkKeeper');
+      const timerWrap=document.getElementById('pkTimerWrap'); if(timerWrap) timerWrap.style.display='none';
+      const kickerLabel = kSide==='A' ? labelA : labelB;
+      setBanner('⚽ '+kickerLabel+' يسدد...', '#ffd93b');
+      const keeperOffset = dive==='left' ? -78 : (dive==='right' ? 78 : 0);
+      if(keeper) keeper.style.transform = 'translate(calc(-50% + '+keeperOffset+'px), '+(dive==='mid'?0:6)+'px) rotate('+(dive==='left'?-18:(dive==='right'?18:0))+'deg)';
+      const tx = shot.wide ? (shot.tx<0.5 ? -0.15 : 1.15) : Math.max(-0.15, Math.min(1.15, shot.tx));
+      const ty = shot.chip ? 0.5 : shot.ty;
+      const leftPct = 11 + tx*78;
+      const bottomPct = 58 + ty*34;
+      setTimeout(()=>{
+        if(destroyed || !ball) return;
+        ball.style.left = leftPct+'%'; ball.style.bottom = bottomPct+'%';
+        ball.style.transform = 'translate(-50%,0) scale('+(shot.chip?0.85:0.7)+') rotate(360deg)';
+      }, 60);
+      setTimeout(()=>{
+        if(destroyed) return;
+        if(shot.wide){ setBanner('😬 تسديدة خارج المرمى!', '#f87171'); sfx('wrong'); }
+        else if(scored){ setBanner('⚽ GOAL! هدف!', '#4ade80'); sfx('win'); }
+        else { setBanner('🧤 تصدي رائع من الحارس!', '#f87171'); sfx('hit'); }
+        cb();
+      }, 680);
+    }
+
+    /* ---------- turn engine (runs for ai / local / online-host) ---------- */
+    function kicker(idx){ return idx%2===0 ? 'A' : 'B'; }
+    function decideStatus(){
+      if(kickIndex===10){ if(scoreA!==scoreB) return { over:true, winner: scoreA>scoreB?'A':'B' }; return { over:false }; }
+      if(kickIndex>10 && (kickIndex-10)%2===0){ if(scoreA!==scoreB) return { over:true, winner: scoreA>scoreB?'A':'B' }; }
+      return { over:false };
+    }
+
+    function getInput(side, kind, cb){
+      if(destroyed) return;
+      if(mode==='ai'){
+        if(side==='A'){ if(kind==='shot') showKickerUI('أنت', cb); else showDefendUI('أنت', cb); }
+        else {
+          clearControlZone();
+          setBanner(kind==='shot' ? '🤖 الجهاز يستعد للتسديد...' : '🤖 الجهاز يستعد للصد...', '#94a3b8');
+          setTimeout(()=>{ if(!destroyed) cb(kind==='shot' ? pkAiShot() : pkAiDive()); }, 700+Math.random()*500);
+        }
+      } else if(mode==='local'){
+        const lbl = side==='A' ? labelA : labelB;
+        showPassDevice(lbl, kind, ()=>{ if(kind==='shot') showKickerUI(lbl, cb); else showDefendUI(lbl, cb); });
+      } else if(mode==='online'){
+        if(side==='A'){ if(kind==='shot') showKickerUI(labelA, cb); else showDefendUI(labelA, cb); }
+        else {
+          send({ type: kind==='shot' ? 'yourTurnKick' : 'yourTurnDefend' });
+          clearControlZone();
+          setBanner(kind==='shot' ? ('⏳ '+labelB+' يسدد الآن...') : ('⏳ '+labelB+' يستعد للصد...'), '#94a3b8');
+          if(kind==='shot') pendingResolvers.shot = cb; else pendingResolvers.dive = cb;
+        }
+      }
+    }
+
+    function applyResult(kSide, shot, dive, result){
+      const scored = result.scored;
+      if(kSide==='A'){ attemptsA++; if(scored) scoreA++; dotsA.push(scored?'goal':'miss'); }
+      else { attemptsB++; if(scored) scoreB++; dotsB.push(scored?'goal':'miss'); }
+      updateHud();
+      animateAndShow(shot, dive, scored, kSide, ()=>{
+        if(destroyed) return;
+        if(mode==='online' && isHost) send({ type:'kickResult', shot, dive, scored, kSide, scoreA, scoreB, attemptsA, attemptsB, dotsA, dotsB });
+        kickIndex++;
+        const status = decideStatus();
+        if(status.over){
+          matchOver=true;
+          if(mode==='online' && isHost) send({ type:'matchOver', winner:status.winner, scoreA, scoreB });
+          setTimeout(()=>{ if(!destroyed) showFinal(status.winner); }, 700);
+        } else {
+          setTimeout(()=>{ if(!destroyed) runTurn(); }, 900);
+        }
+      });
+    }
+
+    function runTurn(){
+      if(destroyed || matchOver) return;
+      const kSide=kicker(kickIndex), dSide= kSide==='A' ? 'B' : 'A';
+      getInput(kSide, 'shot', shot=>{
+        getInput(dSide, 'dive', dive=>{
+          const result = pkComputeOutcome(shot, dive);
+          applyResult(kSide, shot, dive, result);
+        });
+      });
+    }
+
+    function showFinal(winner){
+      clearControlZone();
+      const winLabel = winner==='A' ? labelA : labelB;
+      const overlayDiv=document.createElement('div'); overlayDiv.className='roundOverlay';
+      overlayDiv.innerHTML = '<h2>🏆 فاز '+winLabel+'!</h2><p>النتيجة النهائية: '+teamA.name+' '+scoreA+' - '+scoreB+' '+teamB.name+'</p>';
+      const b1=document.createElement('button'); b1.className='actionBtn'; b1.textContent='🔁 مباراة جديدة';
+      b1.addEventListener('click', ()=>{ overlayDiv.remove(); if(mode==='online' && peer){ try{peer.destroy();}catch(e){} peer=null; conn=null; } showModeSelect(); });
+      const b2=document.createElement('button'); b2.className='actionBtn secondary'; b2.textContent='🏠 القائمة';
+      b2.addEventListener('click', ()=>{ overlayDiv.remove(); backBtn.click(); });
+      overlayDiv.appendChild(b1); overlayDiv.appendChild(b2);
+      sfx('win');
+      const stage=document.getElementById('pkStage') || container;
+      stage.appendChild(overlayDiv);
+    }
+
+    return function cleanup(){
+      destroyed=true;
+      if(peer){ try{ peer.destroy(); }catch(e){} }
+      peer=null; conn=null;
+    };
+  }
+
+})();
+</script>
+</body>
+</html>

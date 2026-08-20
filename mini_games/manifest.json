@@ -1,0 +1,23 @@
+{
+  "name": "منصة العب",
+  "short_name": "منصة العب",
+  "description": "لعبة بها العاب مختلفة",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#1e1e2f",
+  "theme_color": "#3b82f6",
+  "icons": [
+    {
+      "src": "icon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
