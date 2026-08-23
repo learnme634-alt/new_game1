@@ -44,12 +44,24 @@
             70% { transform: scale(1); box-shadow: 0 0 0 15px rgba(16, 185, 129, 0); }
             100% { transform: scale(0.95); } }
         .status { margin-bottom: 15px; font-size: 1.1rem; color: #94a3b8; min-height: 25px; }
+        
         .feedback {
             padding: 15px; border-radius: 12px; font-size: 1.2rem; font-weight: bold;
             display: none; transition: 0.3s; margin-top: 20px; line-height: 1.6;
         }
         .feedback span.spoken { color: #f8fafc; font-weight: normal; font-size: 1.1rem; }
         .feedback span.correct-ans { color: #f8fafc; font-weight: bold; }
+        
+        /* تنسيق الصورة اللي راح تنسحب من الإنترنت */
+        .result-image {
+            max-width: 100%;
+            max-height: 180px;
+            border-radius: 10px;
+            margin-top: 15px;
+            display: none;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+            object-fit: cover;
+        }
         
         #game-area { display: none; }
     </style>
@@ -99,7 +111,7 @@
     let recognition;
     let isListening = false;
 
-    // 🎵 مولد الأصوات (مؤثرات صوتية بدون ملفات)
+    // 🎵 مولد الأصوات
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     
     function playSound(type) {
@@ -110,24 +122,18 @@
         gain.connect(audioCtx.destination);
         
         if (type === 'start') {
-            // صوت ظهور السؤال (تنبيه خفيف)
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+            osc.type = 'sine'; osc.frequency.setValueAtTime(600, audioCtx.currentTime);
             gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
             gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
             osc.start(); osc.stop(audioCtx.currentTime + 0.3);
         } else if (type === 'correct') {
-            // صوت الإجابة الصحيحة (رنة إيجابية)
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+            osc.type = 'sine'; osc.frequency.setValueAtTime(800, audioCtx.currentTime);
             osc.frequency.exponentialRampToValueAtTime(1200, audioCtx.currentTime + 0.1);
             gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
             gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
             osc.start(); osc.stop(audioCtx.currentTime + 0.5);
         } else if (type === 'wrong') {
-            // صوت الإجابة الخاطئة (بزر تحذيري)
-            osc.type = 'sawtooth';
-            osc.frequency.setValueAtTime(300, audioCtx.currentTime);
+            osc.type = 'sawtooth'; osc.frequency.setValueAtTime(300, audioCtx.currentTime);
             osc.frequency.exponentialRampToValueAtTime(150, audioCtx.currentTime + 0.2);
             gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
             gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
@@ -135,18 +141,32 @@
         }
     }
 
+    // 🖼️ دالة جلب الصور التلقائية من ويكيبيديا
+    async function fetchWikipediaImage(query) {
+        try {
+            // نستخدم محرك بحث ويكيبيديا لجلب أقرب صورة للإجابة الصحيحة
+            const url = `https://ar.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(query)}&gsrlimit=1&prop=pageimages&format=json&pithumbsize=400&origin=*`;
+            const res = await fetch(url);
+            const data = await res.json();
+            if (data.query && data.query.pages) {
+                const pages = data.query.pages;
+                const pageId = Object.keys(pages)[0];
+                if (pages[pageId].thumbnail) {
+                    return pages[pageId].thumbnail.source; // رابط الصورة
+                }
+            }
+        } catch(e) { console.log("لا توجد صورة:", e); }
+        return null;
+    }
+
     // 🎤 دالة فتح المايك تلقائياً
     function autoStartMic() {
         document.getElementById('status').innerText = "استعد للإجابة...";
         setTimeout(() => {
             if (recognition && !isListening) {
-                try {
-                    recognition.start();
-                } catch(e) {
-                    console.log("المايك يعمل بالفعل");
-                }
+                try { recognition.start(); } catch(e) {}
             }
-        }, 800); // يفتح المايك بعد 0.8 ثانية من ظهور السؤال
+        }, 800);
     }
 
     window.onload = async () => {
@@ -164,23 +184,16 @@
         if(audioCtx.state === 'suspended') audioCtx.resume();
         const roomId = Math.floor(1000 + Math.random() * 9000);
         peer = new Peer('ahmedquiz-' + roomId);
-        
         document.getElementById('lobby-status').innerText = 'جاري إنشاء الغرفة...';
-
         peer.on('open', () => {
             document.getElementById('lobby-status').innerHTML = `تم الإنشاء! أعطِ هذا الرقم لصديقك: <b style="font-size:26px; color:var(--success);">${roomId}</b><br>ننتظر دخول الخصم...`;
         });
-
         peer.on('connection', (connection) => {
-            conn = connection;
-            isHost = true;
-            myRole = 'host';
+            conn = connection; isHost = true; myRole = 'host';
             setupConnection();
-            
             document.getElementById('lobby-area').style.display = 'none';
             document.getElementById('game-area').style.display = 'block';
             document.getElementById('role-badge').innerText = '(أنت صاحب الغرفة)';
-            
             setTimeout(sendNextQuestion, 1500);
         });
     }
@@ -189,26 +202,18 @@
         if(audioCtx.state === 'suspended') audioCtx.resume();
         const roomId = document.getElementById('roomCode').value;
         if(!roomId) return alert("الرجاء إدخال رقم الغرفة!");
-        
         document.getElementById('lobby-status').innerText = 'جاري الاتصال بصديقك...';
         peer = new Peer();
-        
         peer.on('open', () => {
             conn = peer.connect('ahmedquiz-' + roomId);
-            
             conn.on('open', () => {
-                isHost = false;
-                myRole = 'client';
+                isHost = false; myRole = 'client';
                 setupConnection();
-                
                 document.getElementById('lobby-area').style.display = 'none';
                 document.getElementById('game-area').style.display = 'block';
                 document.getElementById('role-badge').innerText = '(أنت الضيف)';
             });
-            
-            conn.on('error', () => {
-                document.getElementById('lobby-status').innerText = 'فشل الاتصال! تأكد من الرقم.';
-            });
+            conn.on('error', () => { document.getElementById('lobby-status').innerText = 'فشل الاتصال! تأكد من الرقم.'; });
         });
     }
 
@@ -218,10 +223,7 @@
                 document.getElementById('question').innerText = data.qText;
                 document.getElementById('feedback').style.display = 'none';
                 document.getElementById('mic-btn').style.display = 'flex';
-                
-                playSound('start'); // صوت ظهور السؤال
-                autoStartMic();     // تشغيل المايك تلقائياً
-                
+                playSound('start'); autoStartMic();
             } else if (data.type === 'submit') {
                 if (isHost) checkAnswer(data.text, 'client');
             } else if (data.type === 'result') {
@@ -256,11 +258,10 @@
             handleResult(resultData);
             conn.send(resultData);
             currentIndex++;
-            setTimeout(sendNextQuestion, 4000);
+            setTimeout(sendNextQuestion, 5000); // تأخير 5 ثواني حتى تشوفون الصورة براحتكم
         } else {
-            const wrongData = {
-                type: 'wrong', spokenText: spokenText, correctAnswer: currentQ.accepted_answers[0]
-            };
+            // التحديث هنا: تم إزالة correctAnswer من الخطأ حتى ما تنكشف الإجابة
+            const wrongData = { type: 'wrong', spokenText: spokenText };
             if (senderRole === 'client') conn.send(wrongData);
             else handleWrong(wrongData);
         }
@@ -269,14 +270,10 @@
     function sendNextQuestion() {
         if (currentIndex < questions.length) {
             const qData = { type: 'question', qText: questions[currentIndex].question };
-            
             document.getElementById('question').innerText = qData.qText;
             document.getElementById('feedback').style.display = 'none';
             document.getElementById('mic-btn').style.display = 'flex';
-            
-            playSound('start'); // صوت ظهور السؤال
-            autoStartMic();     // تشغيل المايك تلقائياً
-            
+            playSound('start'); autoStartMic();
             conn.send(qData);
         } else {
             conn.send({ type: 'game_over' });
@@ -288,47 +285,58 @@
         }
     }
 
-    function handleResult(data) {
+    async function handleResult(data) {
         scores = data.scores;
         const fb = document.getElementById('feedback');
         fb.style.display = 'block';
         document.getElementById('score').innerText = scores[myRole];
 
+        let htmlContent = "";
+
         if (data.winnerRole === myRole) {
-            playSound('correct'); // صوت الإجابة الصحيحة
+            playSound('correct'); 
             fb.style.background = 'rgba(16, 185, 129, 0.2)';
             fb.style.color = '#34d399';
-            fb.innerHTML = `✅ أسرع إجابة صحيحة لك!<br><span class="spoken">قلت: "${data.spokenText}"</span>`;
+            htmlContent = `✅ أسرع إجابة صحيحة لك!<br><span class="spoken">قلت: "${data.spokenText}"</span>`;
         } else {
-            playSound('wrong'); // صوت لخسارة النقطة
+            playSound('wrong'); 
             fb.style.background = 'rgba(239, 68, 68, 0.2)';
             fb.style.color = '#f87171';
-            fb.innerHTML = `❌ الخصم سبقك وجاوب صحيح!<br><span class="spoken">الخصم قال: "${data.spokenText}"</span><br><span class="correct-ans">الإجابة: ${data.correctAnswer}</span>`;
+            htmlContent = `❌ الخصم سبقك وجاوب صحيح!<br><span class="spoken">الخصم قال: "${data.spokenText}"</span><br><span class="correct-ans">الإجابة: ${data.correctAnswer}</span>`;
         }
         
-        if(isListening) {
-            isListening = false;
-            recognition.stop();
-        }
+        // تجهيز مكان للصورة داخل الفيدباك
+        htmlContent += `<br><img id="result-img" class="result-image" src="" alt="صورة الجواب">`;
+        fb.innerHTML = htmlContent;
+
+        if(isListening) { isListening = false; recognition.stop(); }
         document.getElementById('mic-btn').style.display = 'none';
+
+        // جلب وعرض الصورة فوراً
+        const imgUrl = await fetchWikipediaImage(data.correctAnswer);
+        if(imgUrl) {
+            const imgEl = document.getElementById('result-img');
+            imgEl.src = imgUrl;
+            imgEl.style.display = 'inline-block';
+        }
     }
 
     function handleWrong(data) {
-        playSound('wrong'); // صوت الإجابة الخاطئة
+        playSound('wrong'); 
         const fb = document.getElementById('feedback');
         fb.style.display = 'block';
         fb.style.background = 'rgba(245, 158, 11, 0.2)';
         fb.style.color = '#fbbf24';
         
+        // هنا تم مسح الإجابة الصحيحة
         fb.innerHTML = `⚠️ إجابة خاطئة!<br>
                        <span class="spoken">أنت قلت: "${data.spokenText}"</span><br>
-                       <span class="correct-ans">الإجابة الصحيحة هي: ${data.correctAnswer}</span><br>
-                       <span style="font-size: 0.9rem; color: #cbd5e1; margin-top: 10px; display: inline-block;">(ننتظر إجابة الخصم أو السؤال التالي...)</span>`;
+                       <span style="font-size: 0.9rem; color: #cbd5e1; margin-top: 10px; display: inline-block;">(حاول مرة ثانية أو انتظر إجابة الخصم)</span>`;
         
-        if(isListening) {
-            isListening = false;
-            recognition.stop();
-        }
+        if(isListening) { isListening = false; recognition.stop(); }
+        
+        // يرجع يفتح المايك تلقائياً بعد ثانية ونص حتى تخمن مرة ثانية
+        setTimeout(autoStartMic, 1500);
     }
 
     function initSpeech() {
@@ -342,31 +350,24 @@
                 isListening = true;
                 document.getElementById('mic-btn').classList.add('listening');
                 document.getElementById('status').innerText = "جاري الاستماع... 🎤";
-                document.getElementById('feedback').style.display = 'none'; 
+                // لا نخفي الفيدباك هنا إذا كانت الشاشة تعرض صورة الإجابة الصحيحة
             };
             
             recognition.onresult = (event) => {
                 const spokenText = event.results[0][0].transcript;
-                if (isHost) {
-                    checkAnswer(spokenText, 'host'); 
-                } else {
-                    conn.send({ type: 'submit', text: spokenText }); 
-                }
+                if (isHost) { checkAnswer(spokenText, 'host'); } 
+                else { conn.send({ type: 'submit', text: spokenText }); }
             };
             
             recognition.onerror = () => stopListening();
             recognition.onend = () => stopListening();
-        } else {
-            alert("متصفحك لا يدعم التعرف الصوتي. استخدم Google Chrome.");
-        }
+        } else { alert("متصفحك لا يدعم التعرف الصوتي. استخدم Google Chrome."); }
     }
 
     function toggleListening() {
         if (!recognition) return;
-        if (isListening) {
-            isListening = false;
-            recognition.stop();
-        } else recognition.start();
+        if (isListening) { isListening = false; recognition.stop(); } 
+        else recognition.start();
     }
 
     function stopListening() {
