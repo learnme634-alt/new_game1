@@ -59,7 +59,11 @@ io.on('connection', (socket) => {
             currentQuestionIndex++;
             setTimeout(sendNextQuestion, 3000);
         } else {
-            socket.emit('wrong_answer', spokenText);
+            // نرسل الكلمة التي قالها اللاعب والإجابة الصحيحة المعتمدة للسؤال الحالي
+            socket.emit('wrong_answer', {
+                spokenText: spokenText,
+                correctAnswer: currentQ.accepted_answers[0]
+            });
         }
     });
 
