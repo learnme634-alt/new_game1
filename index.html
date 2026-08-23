@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>تحدي المعرفة الصوتي | النسخة المطورة</title>
+    <style>
+        :root {
+            --primary: #4F46E5; --success: #10B981; --danger: #EF4444; --warning: #F59E0B;
+            --bg-color: #0f172a; --card-bg: rgba(30, 41, 59, 0.8);
+        }
+        * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, sans-serif; }
+        body {
+            background: var(--bg-color); color: #f8fafc; margin: 0; padding: 20px;
+            display: flex; justify-content: center; align-items: center; min-height: 100vh;
+        }
+        .game-container {
+            background: var(--card-bg); backdrop-filter: blur(15px); border-radius: 20px;
+            padding: 30px; width: 100%; max-width: 650px; text-align: center;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.1);
+        }
+        .top-bar { display: flex; justify-content: space-between; margin-bottom: 25px; font-size: 1.2rem; font-weight: bold; }
+        .timer { color: var(--warning); font-size: 1.5rem; }
+        .question-text { font-size: 1.8rem; margin: 30px 0; min-height: 80px; color: #e2e8f0; }
+        .mic-btn {
+            background: var(--primary); border: none; width: 90px; height: 90px; border-radius: 50%;
+            cursor: pointer; display: flex; justify-content: center; align-items: center;
+            transition: 0.3s; box-shadow: 0 5px 20px rgba(79, 70, 229, 0.4); margin: 0 auto 20px;
+        }
+        .mic-btn svg { width: 40px; height: 40px; fill: white; }
+        .mic-btn.listening { background: var(--success); animation: pulse 1s infinite; }
+        @keyframes pulse { 0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 15px rgba(16, 185, 129, 0); }
+            100% { transform: scale(0.95); } }
+        .status { margin-bottom: 15px; font-size: 1.1rem; color: #94a3b8; min-height: 25px; }
+        .feedback {
+            padding: 15px; border-radius: 12px; font-size: 1.2rem; font-weight: bold;
+            display: none; transition: 0.3s;
+        }
+        .start-btn {
+            background: var(--success); color: white; border: none; padding: 15px 40px;
+            font-size: 1.3rem; border-radius: 10px; cursor: pointer; font-weight: bold;
+        }
+        #game-area { display: none; }
+    </style>
+</head>
+<body>
+
+<div class="game-container">
+    <!-- شاشة البداية -->
+    <div id="start-screen">
+        <h1 style="color: var(--primary);">تحدي المعرفة الصوتي</h1>
+        <p style="font-size: 1.2rem; margin-bottom: 30px;">هل أنت مستعد لاختبار معلوماتك؟ (10 أسئلة)</p>
+        <button class="start-btn" onclick="fetchQuestions()">ابدأ اللعب الآن</button>
+        <p id="loading-text" style="color: var(--warning); display: none; margin-top: 15px;">جاري تحميل بنك الأسئلة...</p>
+    </div>
+
+    <!-- شاشة اللعب -->
+    <div id="game-area">
+        <div class="top-bar">
+            <div>السؤال: <span id="q-counter">1</span> / 10</div>
+            <div class="timer">⏱ <span id="time-left">15</span>ث</div>
+            <div style="color: var(--success);">النقاط: <span id="score">0</span></div>
+        </div>
+        
+        <div class="question-text" id="question"></div>
+        
+        <button class="mic-btn" id="mic-btn" onclick="toggleListening()">
+            <svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
+        </button>
+        
+        <div class="status" id="status">اضغط على المايك للإجابة</div>
+        <div class="feedback" id="feedback"></div>
+    </div>
+</div>
+
+<script>
+    let allDatabase = [];
+    let currentRound = [];
+    let currentIndex = 0;
+    let score = 0;
+    let timerInterval;
+    let timeLeft = 15;
+    let recognition;
+    let isListening = false;
+
+    // 1. جلب الأسئلة من الملف الخارجي
+    async function fetchQuestions() {
+        document.getElementById('loading-text').style.display = 'block';
+        try {
+            const response = await fetch('questions.json');
+            allDatabase = await response.json();
+            
+            // اختيار 10 أسئلة عشوائية للجولة الحالية
+            currentRound = allDatabase.sort(() => 0.5 - Math.random()).slice(0, 10);
+            
+            document.getElementById('start-screen').style.display = 'none';
+            document.getElementById('game-area').style.display = 'block';
+            initSpeech();
+            loadQuestion();
+        } catch (error) {
+            alert("حدث خطأ في تحميل الأسئلة. تأكد من تشغيل اللعبة عبر Live Server.");
+            console.error(error);
+        }
+    }
+
+    // 2. إعداد التعرف الصوتي
+    function initSpeech() {
+        if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+            const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+            recognition = new SpeechRec();
+            recognition.lang = 'ar-IQ';
+            recognition.continuous = false;
+            
+            recognition.onstart = () => {
+                isListening = true;
+                document.getElementById('mic-btn').classList.add('listening');
+                document.getElementById('status').innerText = "جاري الاستماع... 🎤";
+            };
+            
+            recognition.onresult = (event) => checkAnswer(event.results[0][0].transcript);
+            recognition.onerror = () => stopListening();
+            recognition.onend = () => stopListening();
+        }
+    }
+
+    function toggleListening() {
+        if (isListening) recognition.stop();
+        else {
+            document.getElementById('feedback').style.display = 'none';
+            recognition.start();
+        }
+    }
+
+    function stopListening() {
+        isListening = false;
+        document.getElementById('mic-btn').classList.remove('listening');
+        document.getElementById('status').innerText = "اضغط على المايك للإجابة";
+    }
+
+    // 3. إدارة الجولة والعداد الزمني
+    function startTimer() {
+        clearInterval(timerInterval);
+        timeLeft = 15;
+        document.getElementById('time-left').innerText = timeLeft;
+        
+        timerInterval = setInterval(() => {
+            timeLeft--;
+            document.getElementById('time-left').innerText = timeLeft;
+            if (timeLeft <= 0) {
+                clearInterval(timerInterval);
+                if(isListening) recognition.stop();
+                showFeedback(false, "انتهى الوقت!");
+            }
+        }, 1000);
+    }
+
+    function loadQuestion() {
+        if (currentIndex >= currentRound.length) {
+            document.getElementById('question').innerHTML = `🎉 انتهت الجولة!<br>حصلت على ${score} نقطة.`;
+            document.getElementById('mic-btn').style.display = 'none';
+            document.querySelector('.top-bar').style.display = 'none';
+            document.getElementById('status').style.display = 'none';
+            return;
+        }
+        document.getElementById('feedback').style.display = 'none';
+        document.getElementById('question').innerText = currentRound[currentIndex].question;
+        document.getElementById('q-counter').innerText = currentIndex + 1;
+        startTimer();
+    }
+
+    function normalizeText(text) {
+        return text.trim().replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي').replace(/[\u064B-\u0652]/g, '').toLowerCase();
+    }
+
+    function checkAnswer(spokenText) {
+        clearInterval(timerInterval);
+        const currentQ = currentRound[currentIndex];
+        const normalizedSpoken = normalizeText(spokenText);
+        const isCorrect = currentQ.accepted_answers.map(normalizeText).some(ans => normalizedSpoken.includes(ans));
+        
+        showFeedback(isCorrect, spokenText, currentQ.accepted_answers[0]);
+    }
+
+    function showFeedback(isCorrect, spoken, correctAns) {
+        const fb = document.getElementById('feedback');
+        fb.style.display = 'block';
+        if (isCorrect) {
+            score += 10 + timeLeft; // بونس سرعة
+            document.getElementById('score').innerText = score;
+            fb.style.background = 'rgba(16, 185, 129, 0.2)';
+            fb.style.color = '#34d399';
+            fb.innerHTML = `✅ صحيح! (+${10 + timeLeft} نقطة)`;
+        } else {
+            fb.style.background = 'rgba(239, 68, 68, 0.2)';
+            fb.style.color = '#f87171';
+            fb.innerHTML = `❌ خطأ أو انتهى الوقت!<br><span style="font-size:1rem;">الجواب: ${correctAns || spoken}</span>`;
+        }
+        currentIndex++;
+        setTimeout(loadQuestion, 3000);
+    }
+</script>
+</body>
+</html>
