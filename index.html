@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>تحدي المعرفة الصوتي | أونلاين مجاني</title>
+    <title>تحدي المعرفة الصوتي | أونلاين</title>
     <style>
         :root {
             --primary: #4F46E5; --success: #10B981; --danger: #EF4444; --warning: #F59E0B;
@@ -19,7 +19,6 @@
             padding: 30px; width: 100%; max-width: 650px; text-align: center;
             box-shadow: 0 10px 40px rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.1);
         }
-        /* تصميم شاشة الغرف (اللوبي) */
         .lobby-box { display: flex; flex-direction: column; gap: 15px; align-items: center; margin-top: 20px; }
         .lobby-btn {
             background: var(--primary); color: white; border: none; padding: 12px 30px; font-size: 1.2rem;
@@ -32,7 +31,6 @@
         }
         #lobby-status { margin-top: 15px; font-size: 1.1rem; color: #94a3b8; }
         
-        /* تصميم شاشة اللعب */
         .top-bar { display: flex; justify-content: space-between; margin-bottom: 25px; font-size: 1.2rem; font-weight: bold; }
         .question-text { font-size: 1.8rem; margin: 30px 0; min-height: 80px; color: #e2e8f0; }
         .mic-btn {
@@ -60,11 +58,9 @@
 
 <div class="game-container">
     
-    <!-- شاشة اللوبي (إنشاء أو الانضمام لغرفة) -->
     <div id="lobby-area">
         <h1 style="color: var(--primary); margin-bottom: 10px;">تحدي المعرفة الصوتي</h1>
         <p>العب أونلاين مع صديقك مباشرة!</p>
-        
         <div class="lobby-box">
             <button class="lobby-btn" onclick="createRoom()">إنشاء غرفة جديدة</button>
             <div style="margin: 10px 0; color: #64748b;">أو</div>
@@ -74,7 +70,6 @@
         <p id="lobby-status"></p>
     </div>
 
-    <!-- شاشة اللعب (تظهر بعد الاتصال) -->
     <div id="game-area">
         <div class="top-bar">
             <div style="color: var(--success);">النقاط: <span id="score">0</span></div>
@@ -90,10 +85,8 @@
         <div class="status" id="status"></div>
         <div class="feedback" id="feedback"></div>
     </div>
-
 </div>
 
-<!-- استدعاء مكتبة PeerJS للاتصال المباشر P2P -->
 <script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
 <script>
     let peer = null;
@@ -103,16 +96,63 @@
     let questions = [];
     let currentIndex = 0;
     let scores = { host: 0, client: 0 };
-
     let recognition;
     let isListening = false;
 
-    // 1. تحميل الأسئلة أولاً
+    // 🎵 مولد الأصوات (مؤثرات صوتية بدون ملفات)
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    
+    function playSound(type) {
+        if(audioCtx.state === 'suspended') audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        
+        if (type === 'start') {
+            // صوت ظهور السؤال (تنبيه خفيف)
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.3);
+        } else if (type === 'correct') {
+            // صوت الإجابة الصحيحة (رنة إيجابية)
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(1200, audioCtx.currentTime + 0.1);
+            gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.5);
+        } else if (type === 'wrong') {
+            // صوت الإجابة الخاطئة (بزر تحذيري)
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(300, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(150, audioCtx.currentTime + 0.2);
+            gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.5);
+        }
+    }
+
+    // 🎤 دالة فتح المايك تلقائياً
+    function autoStartMic() {
+        document.getElementById('status').innerText = "استعد للإجابة...";
+        setTimeout(() => {
+            if (recognition && !isListening) {
+                try {
+                    recognition.start();
+                } catch(e) {
+                    console.log("المايك يعمل بالفعل");
+                }
+            }
+        }, 800); // يفتح المايك بعد 0.8 ثانية من ظهور السؤال
+    }
+
     window.onload = async () => {
         try {
             const res = await fetch('questions.json');
             const data = await res.json();
-            // خلط الأسئلة عشوائياً
             questions = data.sort(() => 0.5 - Math.random());
             initSpeech();
         } catch (e) {
@@ -120,9 +160,9 @@
         }
     };
 
-    // 2. إنشاء غرفة (اللاعب الأول - يصبح هو السيرفر)
     function createRoom() {
-        const roomId = Math.floor(1000 + Math.random() * 9000); // رقم عشوائي من 4 أرقام
+        if(audioCtx.state === 'suspended') audioCtx.resume();
+        const roomId = Math.floor(1000 + Math.random() * 9000);
         peer = new Peer('ahmedquiz-' + roomId);
         
         document.getElementById('lobby-status').innerText = 'جاري إنشاء الغرفة...';
@@ -141,13 +181,12 @@
             document.getElementById('game-area').style.display = 'block';
             document.getElementById('role-badge').innerText = '(أنت صاحب الغرفة)';
             
-            // ننتظر ثانية وحدة بعدين ندز السؤال الأول
-            setTimeout(sendNextQuestion, 1000);
+            setTimeout(sendNextQuestion, 1500);
         });
     }
 
-    // 3. الانضمام لغرفة (اللاعب الثاني)
     function joinRoom() {
+        if(audioCtx.state === 'suspended') audioCtx.resume();
         const roomId = document.getElementById('roomCode').value;
         if(!roomId) return alert("الرجاء إدخال رقم الغرفة!");
         
@@ -173,26 +212,23 @@
         });
     }
 
-    // 4. إدارة البيانات بين اللاعبين
     function setupConnection() {
         conn.on('data', (data) => {
             if (data.type === 'question') {
                 document.getElementById('question').innerText = data.qText;
                 document.getElementById('feedback').style.display = 'none';
                 document.getElementById('mic-btn').style.display = 'flex';
-                document.getElementById('status').innerText = "اضغط على المايك للإجابة";
-            } 
-            else if (data.type === 'submit') {
-                // إذا أنا السيرفر (Host) وصديقي دز إجابة، أنا أفحصها
+                
+                playSound('start'); // صوت ظهور السؤال
+                autoStartMic();     // تشغيل المايك تلقائياً
+                
+            } else if (data.type === 'submit') {
                 if (isHost) checkAnswer(data.text, 'client');
-            } 
-            else if (data.type === 'result') {
+            } else if (data.type === 'result') {
                 handleResult(data);
-            } 
-            else if (data.type === 'wrong') {
+            } else if (data.type === 'wrong') {
                 handleWrong(data);
-            }
-            else if (data.type === 'game_over') {
+            } else if (data.type === 'game_over') {
                 let myScore = scores[myRole];
                 let oppScore = scores[myRole === 'host' ? 'client' : 'host'];
                 document.getElementById('question').innerHTML = `🎉 انتهت اللعبة!<br>نقاطك: ${myScore} | الخصم: ${oppScore}`;
@@ -202,7 +238,6 @@
         });
     }
 
-    // 5. فحص الإجابات (تتم حصراً في جهاز الـ Host لمنع الغش)
     function normalizeText(text) {
         return text.trim().replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي').replace(/[\u064B-\u0652]/g, '').toLowerCase();
     }
@@ -214,27 +249,18 @@
 
         if (isCorrect) {
             scores[senderRole] += 10;
-
             const resultData = {
-                type: 'result',
-                winnerRole: senderRole,
-                spokenText: spokenText,
-                correctAnswer: currentQ.accepted_answers[0],
-                scores: scores
+                type: 'result', winnerRole: senderRole, spokenText: spokenText,
+                correctAnswer: currentQ.accepted_answers[0], scores: scores
             };
-            
-            handleResult(resultData); // أحدث شاشتي
-            conn.send(resultData);    // أحدث شاشة الخصم
-            
+            handleResult(resultData);
+            conn.send(resultData);
             currentIndex++;
-            setTimeout(sendNextQuestion, 3000);
+            setTimeout(sendNextQuestion, 4000);
         } else {
             const wrongData = {
-                type: 'wrong',
-                spokenText: spokenText,
-                correctAnswer: currentQ.accepted_answers[0]
+                type: 'wrong', spokenText: spokenText, correctAnswer: currentQ.accepted_answers[0]
             };
-            
             if (senderRole === 'client') conn.send(wrongData);
             else handleWrong(wrongData);
         }
@@ -244,13 +270,13 @@
         if (currentIndex < questions.length) {
             const qData = { type: 'question', qText: questions[currentIndex].question };
             
-            // عرض السؤال عندي
             document.getElementById('question').innerText = qData.qText;
             document.getElementById('feedback').style.display = 'none';
             document.getElementById('mic-btn').style.display = 'flex';
-            document.getElementById('status').innerText = "اضغط على المايك للإجابة";
             
-            // إرسال السؤال للخصم
+            playSound('start'); // صوت ظهور السؤال
+            autoStartMic();     // تشغيل المايك تلقائياً
+            
             conn.send(qData);
         } else {
             conn.send({ type: 'game_over' });
@@ -262,7 +288,6 @@
         }
     }
 
-    // 6. واجهة التفاعل (إجابة صحيحة / خاطئة)
     function handleResult(data) {
         scores = data.scores;
         const fb = document.getElementById('feedback');
@@ -270,20 +295,26 @@
         document.getElementById('score').innerText = scores[myRole];
 
         if (data.winnerRole === myRole) {
+            playSound('correct'); // صوت الإجابة الصحيحة
             fb.style.background = 'rgba(16, 185, 129, 0.2)';
             fb.style.color = '#34d399';
             fb.innerHTML = `✅ أسرع إجابة صحيحة لك!<br><span class="spoken">قلت: "${data.spokenText}"</span>`;
         } else {
+            playSound('wrong'); // صوت لخسارة النقطة
             fb.style.background = 'rgba(239, 68, 68, 0.2)';
             fb.style.color = '#f87171';
             fb.innerHTML = `❌ الخصم سبقك وجاوب صحيح!<br><span class="spoken">الخصم قال: "${data.spokenText}"</span><br><span class="correct-ans">الإجابة: ${data.correctAnswer}</span>`;
         }
         
-        if(isListening) toggleListening();
+        if(isListening) {
+            isListening = false;
+            recognition.stop();
+        }
         document.getElementById('mic-btn').style.display = 'none';
     }
 
     function handleWrong(data) {
+        playSound('wrong'); // صوت الإجابة الخاطئة
         const fb = document.getElementById('feedback');
         fb.style.display = 'block';
         fb.style.background = 'rgba(245, 158, 11, 0.2)';
@@ -294,10 +325,12 @@
                        <span class="correct-ans">الإجابة الصحيحة هي: ${data.correctAnswer}</span><br>
                        <span style="font-size: 0.9rem; color: #cbd5e1; margin-top: 10px; display: inline-block;">(ننتظر إجابة الخصم أو السؤال التالي...)</span>`;
         
-        if(isListening) toggleListening();
+        if(isListening) {
+            isListening = false;
+            recognition.stop();
+        }
     }
 
-    // 7. إعداد التعرف الصوتي المدمج
     function initSpeech() {
         if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
             const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -315,9 +348,9 @@
             recognition.onresult = (event) => {
                 const spokenText = event.results[0][0].transcript;
                 if (isHost) {
-                    checkAnswer(spokenText, 'host'); // السيرفر (اللاعب الأول) يفحص إجابته مباشرة
+                    checkAnswer(spokenText, 'host'); 
                 } else {
-                    conn.send({ type: 'submit', text: spokenText }); // اللاعب الثاني يرسل إجابته للسيرفر ليفحصها
+                    conn.send({ type: 'submit', text: spokenText }); 
                 }
             };
             
@@ -330,8 +363,10 @@
 
     function toggleListening() {
         if (!recognition) return;
-        if (isListening) recognition.stop();
-        else recognition.start();
+        if (isListening) {
+            isListening = false;
+            recognition.stop();
+        } else recognition.start();
     }
 
     function stopListening() {
