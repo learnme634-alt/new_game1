@@ -16,13 +16,13 @@
         .question { font-size: 1.8rem; margin: 20px 0; color: #e2e8f0; }
         
         /* تصميم البطاقات المخفية (Flip Cards) */
-        .board { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 30px; }
-        .card-container { perspective: 1000px; height: 60px; }
+        .board { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+        .card-container { perspective: 1000px; height: 50px; } /* صغرنا الارتفاع من 60 إلى 50 */
         .card { width: 100%; height: 100%; transition: transform 0.6s; transform-style: preserve-3d; position: relative; cursor: pointer; }
         .card.flipped { transform: rotateX(180deg); }
-        .card-face { position: absolute; width: 100%; height: 100%; backface-visibility: hidden; display: flex; align-items: center; justify-content: center; border-radius: 10px; font-size: 1.4rem; font-weight: bold; }
+        .card-face { position: absolute; width: 100%; height: 100%; backface-visibility: hidden; display: flex; align-items: center; justify-content: center; border-radius: 8px; font-size: 1.2rem; font-weight: bold; }
         .card-front { background: linear-gradient(180deg, #1e3a8a, #1e40af); border: 2px solid #3b82f6; color: #93c5fd; }
-        .card-back { background: linear-gradient(180deg, #065f46, #047857); border: 2px solid #10b981; transform: rotateX(180deg); color: white; justify-content: space-between; padding: 0 20px; }
+        .card-back { background: linear-gradient(180deg, #065f46, #047857); border: 2px solid #10b981; transform: rotateX(180deg); color: white; justify-content: space-between; padding: 0 15px; }
         
         /* الإكسات (الأخطاء) */
         .strikes { display: flex; justify-content: center; gap: 10px; margin-bottom: 20px; font-size: 3rem; color: #334155; }
@@ -84,29 +84,21 @@
 <script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
 <script>
     // 💡 بنك أسئلة "عائلة تربح" (الجواب عليه نقاط، ولازم تخمن كل الأجوبة)
-    const questionsDB = [
-        {
-            question: "شيء تأخذه معك دائماً عند السفر؟",
-            answers: [
-                { text: "ملابس", points: 40, accepted: ["ملابس", "هدوم", "ملابسي"] },
-                { text: "فلوس / بطاقة", points: 30, accepted: ["فلوس", "مال", "بطاقه", "فلوسي"] },
-                { text: "جواز سفر", points: 20, accepted: ["جواز", "باسبورت", "جواز سفر"] },
-                { text: "شاحنة التلفون", points: 10, accepted: ["شاحنه", "شاحن", "شاحنه تلفون"] }
-            ]
-        },
-        {
-            question: "شيء موجود في كل بيت عراقي؟",
-            answers: [
-                { text: "قوري چاي", points: 35, accepted: ["قوري", "جاي", "چاي", "شاي"] },
-                { text: "مبردة", points: 30, accepted: ["مبرده", "مكيف"] },
-                { text: "صوبة", points: 20, accepted: ["صوبه", "مدفاه"] },
-                { text: "تلفزيون", points: 15, accepted: ["تلفزيون", "شاشه"] }
-            ]
-        }
-    ];
+    let questionsDB = [];
 
     let peer, conn, isHost = false, myRole = '';
     let recognition, isListening = false;
+
+    window.onload = async () => {
+        try {
+            const res = await fetch('family-questions.json');
+            questionsDB = await res.json();
+            // خلط الأسئلة عشوائياً حتى لا تتكرر بنفس الترتيب
+            questionsDB = questionsDB.sort(() => 0.5 - Math.random());
+        } catch (e) {
+            console.error("لم يتم العثور على ملف الأسئلة!");
+        }
+    };
     
     // 🔥 حالة اللعبة (السيرفر/الهوست هو اللي يتحكم بيها ويدزها للخصم)
     let state = {
